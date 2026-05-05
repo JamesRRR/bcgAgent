@@ -58,3 +58,20 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE INDEX IF NOT EXISTS idx_pages_game ON pages(game_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_game ON chunks(game_id);
 CREATE INDEX IF NOT EXISTS idx_qa_game ON qa_history(game_id);
+
+CREATE TABLE IF NOT EXISTS page_illustrations (
+    id          TEXT PRIMARY KEY,
+    page_id     TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    image_path  TEXT NOT NULL,
+    bbox_x1     INTEGER NOT NULL,
+    bbox_y1     INTEGER NOT NULL,
+    bbox_x2     INTEGER NOT NULL,
+    bbox_y2     INTEGER NOT NULL,
+    label       TEXT,
+    created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_illustrations_page ON page_illustrations(page_id);
+CREATE INDEX IF NOT EXISTS idx_illustrations_game ON page_illustrations(game_id);

@@ -10,6 +10,7 @@ pub mod models;
 
 pub mod chunks;
 pub mod games;
+pub mod illustrations;
 pub mod pages;
 pub mod qa;
 pub mod settings;

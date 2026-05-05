@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ZoomIn } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { inTauri } from "@/lib/transport";
-import type { Page } from "@/lib/ipc";
+import { pages as pagesIpc, type Page, type PageIllustration } from "@/lib/ipc";
 
 type Props = {
   page: Page | null;
@@ -11,12 +11,13 @@ type Props = {
 
 export default function OriginalPageViewer({ page }: Props) {
   const { t } = useTranslation();
-  const [zoomed, setZoomed] = useState(false);
+  const [zoomed, setZoomed] = useState<{ src: string } | null>(null);
+  const [illustrations, setIllustrations] = useState<PageIllustration[]>([]);
 
   useEffect(() => {
     if (!zoomed) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setZoomed(false);
+      if (e.key === "Escape") setZoomed(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -24,7 +25,27 @@ export default function OriginalPageViewer({ page }: Props) {
 
   // Reset zoom if the active page changes.
   useEffect(() => {
-    setZoomed(false);
+    setZoomed(null);
+  }, [page?.id]);
+
+  // Fetch the per-page illustration crops whenever the active page changes.
+  useEffect(() => {
+    if (!page) {
+      setIllustrations([]);
+      return;
+    }
+    let cancelled = false;
+    pagesIpc
+      .illustrations(page.id)
+      .then((rows) => {
+        if (!cancelled) setIllustrations(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setIllustrations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [page?.id]);
 
   if (!page) {
@@ -50,7 +71,7 @@ export default function OriginalPageViewer({ page }: Props) {
           </div>
           <button
             type="button"
-            onClick={() => setZoomed(true)}
+            onClick={() => setZoomed({ src: fullSrc })}
             className="group relative w-full rounded-md overflow-hidden border border-ink/10 bg-paper hover:border-accent/40 transition-colors"
             aria-label={t("handbook.viewOriginal")}
           >
@@ -64,18 +85,48 @@ export default function OriginalPageViewer({ page }: Props) {
               <ZoomIn className="w-6 h-6 text-cream opacity-0 group-hover:opacity-100 transition-opacity" />
             </span>
           </button>
+
+          {illustrations.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs text-ink/50 mb-2">
+                {t("handbook.illustrations")} ({illustrations.length})
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {illustrations.map((ill) => {
+                  const src = inTauri ? convertFileSrc(ill.image_path) : "";
+                  return (
+                    <button
+                      key={ill.id}
+                      type="button"
+                      onClick={() => setZoomed({ src })}
+                      className="rounded border border-ink/10 bg-paper overflow-hidden hover:border-accent/40 transition-colors"
+                      title={ill.label ?? ""}
+                    >
+                      <img
+                        src={src}
+                        alt={ill.label ?? "illustration"}
+                        className="w-full h-auto block"
+                        draggable={false}
+                        loading="lazy"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
       {zoomed && (
         <div
           className="fixed inset-0 z-50 bg-ink/80 flex items-center justify-center p-8 cursor-zoom-out"
-          onClick={() => setZoomed(false)}
+          onClick={() => setZoomed(null)}
           role="dialog"
           aria-modal="true"
         >
           <img
-            src={fullSrc}
+            src={zoomed.src}
             alt={`page ${page.page_number} (full)`}
             className="max-w-full max-h-full object-contain shadow-2xl"
             draggable={false}

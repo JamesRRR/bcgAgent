@@ -6,6 +6,21 @@ use super::jieba;
 use super::models::Chunk;
 use crate::error::AppResult;
 
+/// Convert a jieba-cut query string into an FTS5 OR expression like
+/// `"羁绊" OR "什么"`. Each term is wrapped in double quotes so FTS5 treats
+/// it as a phrase literal — that way punctuation, hyphens, or any character
+/// FTS5 reserves for syntax is escaped in the simplest possible way.
+/// Empty whitespace tokens are dropped; embedded `"` is doubled per FTS5
+/// quoting rules.
+fn build_or_match_expr(tokenized: &str) -> String {
+    let parts: Vec<String> = tokenized
+        .split_whitespace()
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+        .collect();
+    parts.join(" OR ")
+}
+
 /// Insert a chunk, its 1024-d embedding, and its jieba-tokenized FTS row.
 /// All three rows share the same `rowid` so we can join by it later.
 pub fn insert_chunk_with_embedding(
@@ -112,6 +127,12 @@ pub fn vec_search(
 /// FTS5 search against the jieba-tokenized `tokens` column. Returns
 /// `(chunk_id, bm25_score)` sorted best-first (smaller bm25 = better match).
 /// If `game_id` is `Some`, results are filtered to that game post-hoc.
+///
+/// We OR the query terms together rather than relying on FTS5's default AND,
+/// because a question like "什么是羁绊" tokenizes to ["什么","是","羁绊"] and
+/// an AND match misses every chunk that doesn't contain all three — including
+/// the chunk that actually defines 羁绊. BM25 up-weights rare terms, so OR +
+/// bm25 ranking surfaces the relevant chunk naturally.
 pub fn fts_search(
     db: &Db,
     query: &str,
@@ -119,6 +140,10 @@ pub fn fts_search(
     k: usize,
 ) -> AppResult<Vec<(i64, f32)>> {
     let tokenized = jieba::tokenize_for_query(query);
+    let match_expr = build_or_match_expr(&tokenized);
+    if match_expr.is_empty() {
+        return Ok(Vec::new());
+    }
     let conn = db.lock();
 
     let fetch_k = if game_id.is_some() { k * 4 } else { k };
@@ -129,7 +154,7 @@ pub fn fts_search(
          ORDER BY bm25(chunks_fts) LIMIT ?",
     )?;
     let raw: Vec<(i64, f32)> = stmt
-        .query_map(params![tokenized, fetch_k as i64], |row| {
+        .query_map(params![match_expr, fetch_k as i64], |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)? as f32))
         })?
         .collect::<Result<Vec<_>, _>>()?;

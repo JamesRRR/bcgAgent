@@ -80,10 +80,26 @@ export const games = {
 
 // ----- Pages -----
 
+export type PageIllustration = {
+  id: string;
+  page_id: string;
+  game_id: string;
+  position: number;
+  image_path: string;
+  bbox_x1: number;
+  bbox_y1: number;
+  bbox_x2: number;
+  bbox_y2: number;
+  label: string | null;
+  created_at: number;
+};
+
 export const pages = {
   listByGame: (game_id: string) =>
     invoke<Page[]>("pages_list_by_game", { game_id }),
   get: (id: string) => invoke<Page | null>("page_get", { id }),
+  illustrations: (page_id: string) =>
+    invoke<PageIllustration[]>("page_illustrations_list", { page_id }),
 };
 
 // ----- Search -----

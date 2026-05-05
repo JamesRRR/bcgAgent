@@ -1,7 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { inTauri } from "@/lib/transport";
 import type { Page } from "@/lib/ipc";
 import MarkdownView from "./MarkdownView";
 
@@ -115,15 +113,6 @@ const PageReader = forwardRef<PageReaderHandle, Props>(function PageReader(
                 </span>
               )}
             </header>
-            {inTauri && p.image_path && (
-              <img
-                src={convertFileSrc(p.image_path)}
-                alt={`page ${p.page_number} original`}
-                className="block w-full h-auto rounded border border-ink/10 mb-6"
-                loading="lazy"
-                draggable={false}
-              />
-            )}
             {p.ocr_status === "done" && p.ocr_markdown ? (
               <MarkdownView source={p.ocr_markdown} highlight={highlight} />
             ) : (

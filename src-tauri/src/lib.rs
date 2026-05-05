@@ -44,6 +44,7 @@ pub fn run() {
             commands::games::game_rename,
             commands::pages::pages_list_by_game,
             commands::pages::page_get,
+            commands::pages::page_illustrations_list,
             commands::pages::qa_list,
             commands::search::search_keyword,
             commands::search::search_semantic,

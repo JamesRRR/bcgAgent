@@ -10,7 +10,10 @@ use crate::error::{AppError, AppResult};
 use crate::events::{emit as sink_emit, EventSink};
 use crate::ocr;
 use crate::paths;
-use crate::store::{chunks as store_chunks, games as store_games, pages as store_pages};
+use crate::store::{
+    chunks as store_chunks, games as store_games, illustrations as store_illustrations,
+    pages as store_pages,
+};
 
 use super::chunker::chunk_markdown;
 use super::AppState;
@@ -174,8 +177,8 @@ async fn process_one(
         },
     );
 
-    let markdown = match ocr::extract_markdown(&stored_image).await {
-        Ok(md) => md,
+    let (markdown, illustrations) = match ocr::extract_grounded(&stored_image).await {
+        Ok(pair) => pair,
         Err(e) => {
             let err_msg = e.to_string();
             let db = state.db.clone();
@@ -206,6 +209,26 @@ async fn process_one(
         })
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
+    }
+
+    // Crop and persist each detected illustration. Cropping happens off the
+    // async thread (image decode is CPU-bound), and a single bad crop does
+    // not abort the rest of the page — we just log and continue.
+    if !illustrations.is_empty() {
+        let stored_image = stored_image.clone();
+        let game_id_owned = game_id.to_string();
+        let page_id_owned = page_id.clone();
+        let db = state.db.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            crop_and_save_illustrations(
+                &db,
+                &game_id_owned,
+                &page_id_owned,
+                &stored_image,
+                &illustrations,
+            )
+        })
+        .await;
     }
 
     let chunks_built = chunk_markdown(&markdown);
@@ -303,6 +326,65 @@ pub async fn run_ingest(
             failed,
         },
     );
+    Ok(())
+}
+
+/// Crop each Qwen-VL-detected illustration out of the page photo and persist
+/// the crop alongside a row in `page_illustrations`. Bad crops (decode error,
+/// out-of-bounds bbox, write failure) are skipped with a warn — we never want
+/// a flaky illustration to fail the whole OCR pass.
+fn crop_and_save_illustrations(
+    db: &crate::store::Db,
+    game_id: &str,
+    page_id: &str,
+    src_image: &Path,
+    illustrations: &[ocr::Illustration],
+) -> AppResult<()> {
+    if illustrations.is_empty() {
+        return Ok(());
+    }
+    let dir = paths::games_dir().join(game_id).join("illustrations");
+    std::fs::create_dir_all(&dir)?;
+
+    let img = match image::open(src_image) {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!("could not decode {} for cropping: {}", src_image.display(), e);
+            return Ok(());
+        }
+    };
+    let (img_w, img_h) = (img.width(), img.height());
+
+    for (idx, ill) in illustrations.iter().enumerate() {
+        let x = ill.x1.min(img_w);
+        let y = ill.y1.min(img_h);
+        let x2 = ill.x2.min(img_w);
+        let y2 = ill.y2.min(img_h);
+        if x2 <= x || y2 <= y {
+            continue;
+        }
+        let w = x2 - x;
+        let h = y2 - y;
+        let crop = img.crop_imm(x, y, w, h);
+        let id = uuid::Uuid::new_v4().to_string();
+        let dst = dir.join(format!("{page_id}_{idx}_{id}.jpg"));
+        if let Err(e) = crop.to_rgb8().save(&dst) {
+            tracing::warn!("save crop {} failed: {}", dst.display(), e);
+            continue;
+        }
+        if let Err(e) = store_illustrations::insert(
+            db,
+            &id,
+            page_id,
+            game_id,
+            idx as i64,
+            &dst.to_string_lossy(),
+            (x, y, x2, y2),
+            ill.label.as_deref(),
+        ) {
+            tracing::warn!("insert illustration row failed: {}", e);
+        }
+    }
     Ok(())
 }
 

@@ -1,7 +1,10 @@
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
-use crate::store::{pages, qa, Page, QAHistory};
+use crate::store::{
+    illustrations as store_illustrations, illustrations::PageIllustration, pages, qa, Page,
+    QAHistory,
+};
 
 use super::AppState;
 
@@ -20,6 +23,17 @@ pub async fn pages_list_by_game(
 pub async fn page_get(state: State<'_, AppState>, id: String) -> AppResult<Option<Page>> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || pages::get_page(&db, &id))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn page_illustrations_list(
+    state: State<'_, AppState>,
+    page_id: String,
+) -> AppResult<Vec<PageIllustration>> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || store_illustrations::list_by_page(&db, &page_id))
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
