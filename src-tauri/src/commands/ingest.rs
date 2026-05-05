@@ -51,6 +51,40 @@ fn ext_of(p: &Path) -> String {
         .unwrap_or_else(|| "png".into())
 }
 
+/// HEIC images (iPhone photos) aren't supported by the `image` crate.
+/// On macOS we shell out to `sips` to transcode to JPEG first; the rest
+/// of the pipeline (thumbnailing, OCR base64) then works as-is.
+/// Returns the path to use for processing — either the original (if not
+/// HEIC) or a sibling JPEG written next to the original.
+fn normalize_for_processing(src: &Path) -> AppResult<PathBuf> {
+    let ext = ext_of(src);
+    if ext != "heic" && ext != "heif" {
+        return Ok(src.to_path_buf());
+    }
+    let dst = src.with_extension("converted.jpg");
+    if dst.exists() {
+        return Ok(dst);
+    }
+    let status = std::process::Command::new("sips")
+        .args(["-s", "format", "jpeg"])
+        .arg(src)
+        .arg("--out")
+        .arg(&dst)
+        .status()
+        .map_err(|e| {
+            crate::error::AppError::Other(anyhow::anyhow!(
+                "sips not available — needed to convert HEIC: {e}"
+            ))
+        })?;
+    if !status.success() {
+        return Err(crate::error::AppError::Other(anyhow::anyhow!(
+            "sips failed to convert HEIC ({})",
+            src.display()
+        )));
+    }
+    Ok(dst)
+}
+
 fn copy_into_game(
     src: &Path,
     game_id: &str,
@@ -93,7 +127,10 @@ async fn process_one(
 ) -> AppResult<usize> {
     let page_id = Uuid::new_v4().to_string();
 
-    let stored_image = copy_into_game(src, game_id, page_number, &page_id)?;
+    // Transcode HEIC → JPEG up front so the rest of the pipeline (thumb,
+    // OCR base64) handles a format the `image` crate can read.
+    let normalized = normalize_for_processing(src)?;
+    let stored_image = copy_into_game(&normalized, game_id, page_number, &page_id)?;
     let thumb = match make_thumb(&stored_image, game_id, &page_id) {
         Ok(p) => Some(p.to_string_lossy().to_string()),
         Err(e) => {
@@ -265,4 +302,59 @@ pub async fn ingest_pages(
         }
     });
     run_ingest(&state, sink, game_id, image_paths).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{ImageBuffer, Rgb};
+
+    #[test]
+    fn heic_normalizes_to_readable_jpeg() {
+        // Synthesize a JPEG, convert to HEIC via sips, then run our normalizer
+        // and confirm the output is a JPEG the `image` crate can decode.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let jpeg = dir.path().join("source.jpg");
+        let heic = dir.path().join("source.heic");
+
+        let img: ImageBuffer<Rgb<u8>, _> =
+            ImageBuffer::from_fn(64, 64, |_, _| Rgb([200, 85, 61]));
+        img.save(&jpeg).expect("write jpg");
+
+        let s = std::process::Command::new("sips")
+            .args(["-s", "format", "heic"])
+            .arg(&jpeg)
+            .arg("--out")
+            .arg(&heic)
+            .status();
+        let s = match s {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("sips not available — skipping HEIC test");
+                return;
+            }
+        };
+        assert!(s.success(), "sips heic encode failed");
+        assert!(heic.exists(), "heic source missing");
+
+        let out = normalize_for_processing(&heic).expect("normalize");
+        assert!(out.exists());
+        assert_ne!(
+            out.extension().unwrap().to_str().unwrap().to_lowercase(),
+            "heic"
+        );
+        // The whole point: the `image` crate must be able to open it.
+        let _ = image::open(&out).expect("image crate must decode normalized output");
+    }
+
+    #[test]
+    fn jpeg_passes_through_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let jpeg = dir.path().join("p.jpg");
+        ImageBuffer::<Rgb<u8>, _>::from_fn(8, 8, |_, _| Rgb([0, 0, 0]))
+            .save(&jpeg)
+            .unwrap();
+        let out = normalize_for_processing(&jpeg).unwrap();
+        assert_eq!(out, jpeg);
+    }
 }
