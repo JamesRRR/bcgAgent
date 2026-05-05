@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { AppContext, type Page } from "@/state";
 import SidebarNav from "@/components/SidebarNav";
 import { ToasterProvider } from "@/components/Toaster";
+import IngestProvider from "@/components/IngestProvider";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const [page, setPageState] = useState<Page>("library");
@@ -23,10 +24,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       <ToasterProvider>
-        <div className="flex min-h-screen bg-paper text-ink font-zh">
-          <SidebarNav />
-          <main className="flex-1 min-w-0">{children}</main>
-        </div>
+        <IngestProvider>
+          <div className="flex min-h-screen bg-paper text-ink font-zh">
+            <SidebarNav />
+            <main className="flex-1 min-w-0">{children}</main>
+          </div>
+        </IngestProvider>
       </ToasterProvider>
     </AppContext.Provider>
   );

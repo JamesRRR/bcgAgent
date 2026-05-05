@@ -34,7 +34,8 @@
       "ocr": "Recognizing text…",
       "embed": "Building index…",
       "done": "Done",
-      "failed": "Failed"
+      "failed": "Failed",
+      "running": "Importing"
     }
   },
   "handbook": {

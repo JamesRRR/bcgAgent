@@ -34,7 +34,8 @@
       "ocr": "正在识别文字…",
       "embed": "正在建立索引…",
       "done": "已完成",
-      "failed": "失败"
+      "failed": "失败",
+      "running": "导入中"
     }
   },
   "handbook": {
