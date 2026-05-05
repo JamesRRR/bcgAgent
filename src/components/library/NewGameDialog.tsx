@@ -92,6 +92,7 @@ export default function NewGameDialog({ open, onClose, onConfirm }: Props) {
             onChange={(e) => setNameZh(e.target.value)}
             placeholder={t("library.addGameDialog.nameZhPlaceholder")}
             className="w-full h-10 rounded-md border border-ink/20 bg-cream px-3 text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            data-testid="new-game-name-zh"
             required
           />
         </label>
@@ -105,6 +106,7 @@ export default function NewGameDialog({ open, onClose, onConfirm }: Props) {
             value={nameEn}
             onChange={(e) => setNameEn(e.target.value)}
             className="w-full h-10 rounded-md border border-ink/20 bg-cream px-3 text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            data-testid="new-game-name-en"
           />
         </label>
 
@@ -117,6 +119,7 @@ export default function NewGameDialog({ open, onClose, onConfirm }: Props) {
             value={publisher}
             onChange={(e) => setPublisher(e.target.value)}
             className="w-full h-10 rounded-md border border-ink/20 bg-cream px-3 text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+            data-testid="new-game-publisher"
           />
         </label>
 

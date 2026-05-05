@@ -26,6 +26,15 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 
+# Claude Code per-session state
+.claude/*.lock
+.claude/worktrees/
+
+# Playwright artifacts
+playwright-report/
+test-results/
+e2e/.auth/
+
 # Bundled / downloaded models & sidecars (large binaries)
 **/*.bin
 **/*.onnx

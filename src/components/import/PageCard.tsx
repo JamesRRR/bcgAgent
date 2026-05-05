@@ -7,6 +7,7 @@ import {
   X,
 } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { inTauri } from "@/lib/transport";
 
 export type PageStatus =
   | { kind: "pending" }
@@ -102,12 +103,17 @@ export default function PageCard({
     opacity: isDragging ? 0.6 : 1,
   };
 
-  const thumbSrc = convertFileSrc(item.path);
+  // `convertFileSrc` only works inside the Tauri shell (it reads from
+  // `window.__TAURI_INTERNALS__`). In browser/E2E mode we don't have a way to
+  // read arbitrary local paths anyway — leave the thumb empty.
+  const thumbSrc = inTauri ? convertFileSrc(item.path) : "";
 
   return (
     <div
       ref={setNodeRef}
       style={style}
+      data-testid="page-card"
+      data-status={item.status.kind}
       className="flex items-center gap-3 bg-paper border border-ink/10 rounded-md pl-1 pr-3 py-2 shadow-sm"
     >
       <button

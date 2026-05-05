@@ -43,12 +43,15 @@ export default function AnswerCard({
       {question && (
         <p className="italic text-sm text-ink/70 mb-4">{question}</p>
       )}
-      <div className="text-ink leading-7 whitespace-pre-wrap min-h-[1.5rem]">
+      <div
+        data-testid="answer-text"
+        className="text-ink leading-7 whitespace-pre-wrap min-h-[1.5rem]"
+      >
         {answer}
         {streaming && <span className="inline-block w-1.5 h-4 ml-0.5 bg-accent/60 animate-pulse align-middle" />}
       </div>
       {citations.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-ink/10">
+        <div className="mt-6 pt-4 border-t border-ink/10" data-testid="citations">
           <p className="text-xs uppercase tracking-wide text-ink/50 mb-2">
             {t("ask.citations.heading")}
           </p>

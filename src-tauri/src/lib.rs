@@ -2,6 +2,7 @@ use tracing_subscriber::EnvFilter;
 
 pub mod paths;
 pub mod error;
+pub mod events;
 pub mod secrets;
 
 pub mod store;
@@ -11,6 +12,9 @@ pub mod llm;
 pub mod audio;
 
 pub mod commands;
+
+#[cfg(feature = "test-server")]
+pub mod test_server;
 
 #[tauri::command]
 fn ping() -> &'static str {

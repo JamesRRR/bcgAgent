@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { inTauri } from "@/lib/transport";
 import type { Game } from "@/lib/ipc";
 
 type Props = {
@@ -27,7 +28,7 @@ export default function GameCard({ game, onClick }: Props) {
       aria-label={game.name_zh}
     >
       <div className="relative w-full aspect-[3/4] rounded-md border border-ink/10 bg-paper overflow-hidden shadow-sm">
-        {game.cover_path ? (
+        {game.cover_path && inTauri ? (
           <img
             src={convertFileSrc(game.cover_path)}
             alt={game.name_zh}

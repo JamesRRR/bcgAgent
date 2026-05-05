@@ -55,3 +55,21 @@ fastembed = "4"
 # audio (Wave 1.6)
 tempfile = "3"
 hound = "3"
+
+# test-server (HTTP shim for browser-driven E2E)
+axum = { version = "0.7", optional = true, features = ["multipart"] }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", optional = true, features = ["cors"] }
+tokio-util = { version = "0.7", optional = true }
+
+[features]
+test-server = ["axum", "tower", "tower-http", "tokio-util"]
+
+[[bin]]
+name = "bcgagent"
+path = "src/main.rs"
+
+[[bin]]
+name = "test-server"
+path = "src/bin/test_server.rs"
+required-features = ["test-server"]

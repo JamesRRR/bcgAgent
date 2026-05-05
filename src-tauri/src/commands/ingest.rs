@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use image::imageops::FilterType;
 use serde::Serialize;
@@ -6,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
+use crate::events::{emit as sink_emit, EventSink};
 use crate::ocr;
 use crate::paths;
 use crate::store::{chunks as store_chunks, games as store_games, pages as store_pages};
@@ -40,12 +42,6 @@ struct IngestDoneEvent {
     game_id: String,
     succeeded: usize,
     failed: usize,
-}
-
-fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: T) {
-    if let Err(e) = app.emit(event, payload) {
-        tracing::warn!("emit {event} failed: {e}");
-    }
 }
 
 fn ext_of(p: &Path) -> String {
@@ -84,22 +80,19 @@ fn make_thumb(image_path: &Path, game_id: &str, page_id: &str) -> AppResult<Path
     } else {
         img
     };
-    // The `image` crate can encode WebP via its `image-webp` feature on output.
-    // `save` uses the extension to pick the encoder.
     resized.to_rgba8().save(&dst)?;
     Ok(dst)
 }
 
 async fn process_one(
     state: &AppState,
-    app: &AppHandle,
+    sink: &EventSink,
     game_id: &str,
     page_number: i64,
     src: &Path,
 ) -> AppResult<usize> {
     let page_id = Uuid::new_v4().to_string();
 
-    // 1-3. Copy + thumb (sync I/O is fine; small files).
     let stored_image = copy_into_game(src, game_id, page_number, &page_id)?;
     let thumb = match make_thumb(&stored_image, game_id, &page_id) {
         Ok(p) => Some(p.to_string_lossy().to_string()),
@@ -109,7 +102,6 @@ async fn process_one(
         }
     };
 
-    // 4. Insert page row.
     {
         let db = state.db.clone();
         let stored = stored_image.to_string_lossy().to_string();
@@ -117,8 +109,6 @@ async fn process_one(
         let page_id_clone = page_id.clone();
         let game_id_clone = game_id.to_string();
         tokio::task::spawn_blocking(move || -> AppResult<()> {
-            // Use the existing helper, which assigns a new uuid; we want our id.
-            // Insert directly to control id.
             let conn = db.lock();
             conn.execute(
                 "INSERT INTO pages (id, game_id, page_number, image_path, thumb_path, created_at) \
@@ -138,17 +128,15 @@ async fn process_one(
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
     }
 
-    // 5. Emit started.
-    emit(
-        app,
+    sink_emit(
+        sink,
         "ingest:page_started",
-        PageStartedEvent {
+        &PageStartedEvent {
             page_id: page_id.clone(),
             page_number,
         },
     );
 
-    // 6. OCR.
     let markdown = match ocr::extract_markdown(&stored_image).await {
         Ok(md) => md,
         Err(e) => {
@@ -159,10 +147,10 @@ async fn process_one(
                 store_pages::set_ocr_result(&db, &page_id_clone, "failed", None, None)
             })
             .await;
-            emit(
-                app,
+            sink_emit(
+                sink,
                 "ingest:page_failed",
-                PageFailedEvent {
+                &PageFailedEvent {
                     page_id,
                     page_number,
                     error: err_msg,
@@ -172,7 +160,6 @@ async fn process_one(
         }
     };
 
-    // 7. Persist OCR.
     {
         let db = state.db.clone();
         let page_id_clone = page_id.clone();
@@ -184,7 +171,6 @@ async fn process_one(
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
     }
 
-    // 8 + 9. Chunk + embed.
     let chunks_built = chunk_markdown(&markdown);
     let chunk_count = chunks_built.len();
     if chunk_count > 0 {
@@ -211,18 +197,16 @@ async fn process_one(
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
     }
 
-    // 11. Emit done.
-    emit(
-        app,
+    sink_emit(
+        sink,
         "ingest:page_done",
-        PageDoneEvent {
+        &PageDoneEvent {
             page_id: page_id.clone(),
             page_number,
             chunk_count,
         },
     );
 
-    // 12. Increment game page count.
     {
         let db = state.db.clone();
         let game_id_clone = game_id.to_string();
@@ -234,10 +218,11 @@ async fn process_one(
     Ok(chunk_count)
 }
 
-#[tauri::command]
-pub async fn ingest_pages(
-    state: State<'_, AppState>,
-    app_handle: AppHandle,
+/// Transport-agnostic ingest orchestration. Used by both the Tauri command
+/// and the HTTP test-server.
+pub async fn run_ingest(
+    state: &AppState,
+    sink: EventSink,
     game_id: String,
     image_paths: Vec<String>,
 ) -> AppResult<()> {
@@ -246,7 +231,7 @@ pub async fn ingest_pages(
     for (idx, path_str) in image_paths.iter().enumerate() {
         let page_number = (idx as i64) + 1;
         let src = PathBuf::from(path_str);
-        match process_one(&state, &app_handle, &game_id, page_number, &src).await {
+        match process_one(state, &sink, &game_id, page_number, &src).await {
             Ok(_) => succeeded += 1,
             Err(e) => {
                 tracing::error!("ingest page {page_number} failed: {e}");
@@ -254,14 +239,30 @@ pub async fn ingest_pages(
             }
         }
     }
-    emit(
-        &app_handle,
+    sink_emit(
+        &sink,
         "ingest:done",
-        IngestDoneEvent {
+        &IngestDoneEvent {
             game_id,
             succeeded,
             failed,
         },
     );
     Ok(())
+}
+
+#[tauri::command]
+pub async fn ingest_pages(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    game_id: String,
+    image_paths: Vec<String>,
+) -> AppResult<()> {
+    let app = app_handle.clone();
+    let sink: EventSink = Arc::new(move |event: &str, payload: serde_json::Value| {
+        if let Err(e) = app.emit(event, payload) {
+            tracing::warn!("emit {event} failed: {e}");
+        }
+    });
+    run_ingest(&state, sink, game_id, image_paths).await
 }

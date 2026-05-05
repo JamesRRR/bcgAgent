@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
+use crate::events::{emit as sink_emit, EventSink};
 use crate::llm::{build_messages, rrf, stream_chat, RetrievedChunk};
 use crate::store::{chunks as store_chunks, games as store_games, pages as store_pages, qa};
 
@@ -29,20 +32,18 @@ struct AskDoneEvent {
     qa_id: String,
 }
 
-#[tauri::command]
-pub async fn ask(
-    state: State<'_, AppState>,
-    app_handle: AppHandle,
+/// Transport-agnostic ask orchestration.
+pub async fn run_ask(
+    state: &AppState,
+    sink: EventSink,
     question: String,
     game_id: Option<String>,
 ) -> AppResult<String> {
-    // 1. Embed query.
     let q_for_embed = question.clone();
     let qv = tokio::task::spawn_blocking(move || crate::embed::embed_query(&q_for_embed))
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
 
-    // 2. Hybrid retrieval (vec + fts).
     let db = state.db.clone();
     let gid_v = game_id.clone();
     let vec_hits = tokio::task::spawn_blocking(move || {
@@ -60,12 +61,10 @@ pub async fn ask(
     .await
     .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
 
-    // 3. RRF fuse.
     let vec_ids: Vec<i64> = vec_hits.iter().map(|(id, _)| *id).collect();
     let fts_ids: Vec<i64> = fts_hits.iter().map(|(id, _)| *id).collect();
     let fused = rrf(&vec_ids, &fts_ids, RRF_K, TOP_N);
 
-    // 4. Hydrate.
     let db = state.db.clone();
     let fused_clone = fused.clone();
     let (retrieved, citations): (Vec<RetrievedChunk>, Vec<CitationChunk>) =
@@ -109,20 +108,15 @@ pub async fn ask(
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
 
-    // 5. Emit citations.
-    if let Err(e) = app_handle.emit("ask:citations", &citations) {
-        tracing::warn!("emit ask:citations failed: {e}");
-    }
+    sink_emit(&sink, "ask:citations", &citations);
 
-    // 6. Stream chat.
     let messages = build_messages(&question, &retrieved);
-    let app_for_tokens = app_handle.clone();
+    let sink_for_tokens = sink.clone();
     let answer = stream_chat(messages, move |tok| {
-        let _ = app_for_tokens.emit("ask:token", tok.to_string());
+        sink_emit(&sink_for_tokens, "ask:token", &tok.to_string());
     })
     .await?;
 
-    // 7. Persist QA.
     let chunk_ids: Vec<i64> = retrieved.iter().map(|c| c.chunk_id).collect();
     let chunk_ids_json = serde_json::to_string(&chunk_ids).unwrap_or_else(|_| "[]".into());
     let db = state.db.clone();
@@ -142,15 +136,29 @@ pub async fn ask(
     .await
     .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
 
-    // 8. Emit done.
-    if let Err(e) = app_handle.emit(
+    sink_emit(
+        &sink,
         "ask:done",
-        AskDoneEvent {
+        &AskDoneEvent {
             qa_id: qa_id.clone(),
         },
-    ) {
-        tracing::warn!("emit ask:done failed: {e}");
-    }
+    );
 
     Ok(qa_id)
+}
+
+#[tauri::command]
+pub async fn ask(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    question: String,
+    game_id: Option<String>,
+) -> AppResult<String> {
+    let app = app_handle.clone();
+    let sink: EventSink = Arc::new(move |event: &str, payload: serde_json::Value| {
+        if let Err(e) = app.emit(event, payload) {
+            tracing::warn!("emit {event} failed: {e}");
+        }
+    });
+    run_ask(&state, sink, question, game_id).await
 }

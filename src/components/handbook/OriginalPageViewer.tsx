@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ZoomIn } from "lucide-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { inTauri } from "@/lib/transport";
 import type { Page } from "@/lib/ipc";
 
 type Props = {
@@ -32,8 +33,12 @@ export default function OriginalPageViewer({ page }: Props) {
     );
   }
 
-  const thumbSrc = convertFileSrc(page.thumb_path || page.image_path);
-  const fullSrc = convertFileSrc(page.image_path);
+  // `convertFileSrc` only works inside the Tauri shell; in browser/E2E we
+  // can't read arbitrary local paths so we just leave the image src empty.
+  const thumbSrc = inTauri
+    ? convertFileSrc(page.thumb_path || page.image_path)
+    : "";
+  const fullSrc = inTauri ? convertFileSrc(page.image_path) : "";
 
   return (
     <>

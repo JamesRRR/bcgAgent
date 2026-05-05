@@ -54,6 +54,7 @@ export default function AskBar({ busy, value, onChange, onSubmit }: Props) {
           onKeyDown={handleKeyDown}
           placeholder={t("ask.placeholder")}
           disabled={busy}
+          data-testid="ask-input"
           className="flex-1 h-12 rounded-md border border-ink/20 bg-paper px-4 text-ink focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
         />
         <Button

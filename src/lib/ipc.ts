@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke, listen } from "@/lib/transport";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 
 // ----- Types (mirror serde structs in src-tauri) -----
 
