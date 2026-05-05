@@ -15,6 +15,7 @@ tech:
   - "Qwen-VL (DashScope)"
   - "MiniMax-M2"
   - "whisper.cpp"
+github: "https://github.com/JamesRRR/bcgAgent.git"
 launch:
   type: "app"
   command: "open -a 桌游规则助手"
