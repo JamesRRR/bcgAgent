@@ -72,7 +72,9 @@ test-server = ["axum", "tower", "tower-http", "tokio-util"]
 name = "bcgagent"
 path = "src/main.rs"
 
-[[bin]]
+# Test-server is an example so Tauri's bundler doesn't try to copy it into
+# the production .app. Build with: cargo build --example test-server --features test-server --release
+[[example]]
 name = "test-server"
-path = "src/bin/test_server.rs"
+path = "examples/test-server.rs"
 required-features = ["test-server"]

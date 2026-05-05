@@ -18,7 +18,7 @@ tech:
 github: "https://github.com/JamesRRR/bcgAgent.git"
 launch:
   type: "app"
-  command: "open -a 桌游规则助手"
+  command: "open -a bcgAgent"
 tags:
   - "boardgame"
   - "rag"

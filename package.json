@@ -14,10 +14,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test-server": "src-tauri/target/release/test-server",
-    "test-server:build": "bash -c 'source \"$HOME/.cargo/env\" && cargo build --manifest-path src-tauri/Cargo.toml --bin test-server --features test-server --release'",
+    "test-server": "src-tauri/target/release/examples/test-server",
+    "test-server:build": "bash -c 'source \"$HOME/.cargo/env\" && cargo build --manifest-path src-tauri/Cargo.toml --example test-server --features test-server --release'",
     "fetch-fixtures": "tsx e2e/scripts/fetch-fixtures.ts",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:click-smoke": "bash e2e/scripts/click-smoke.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
