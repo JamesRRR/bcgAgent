@@ -7,7 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TAURI_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-MIC_DESC='桌游规则助手需要使用麦克风，让你用语音提问规则。Microphone access is used to ask questions by voice.'
+MIC_DESC='攀达桌游需要使用麦克风，让你用语音提问规则。Microphone access is used to ask questions by voice.'
+DISPLAY_NAME='攀达桌游'
 
 shopt -s nullglob
 APPS=("$TAURI_DIR"/target/release/bundle/macos/*.app)
@@ -27,6 +28,16 @@ for APP in "${APPS[@]}"; do
   else
     /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string $MIC_DESC" "$PLIST"
   fi
+  # Display name shown by macOS in the Dock, menu bar, and Finder. Bundle
+  # name on disk stays ASCII (bcgAgent.app) so click-smoke + DMG packaging
+  # keep working — only the user-facing label is Chinese.
+  for KEY in CFBundleDisplayName CFBundleName; do
+    if /usr/libexec/PlistBuddy -c "Print :$KEY" "$PLIST" >/dev/null 2>&1; then
+      /usr/libexec/PlistBuddy -c "Set :$KEY $DISPLAY_NAME" "$PLIST"
+    else
+      /usr/libexec/PlistBuddy -c "Add :$KEY string $DISPLAY_NAME" "$PLIST"
+    fi
+  done
   echo "inject-plist: patched $PLIST"
 done
 

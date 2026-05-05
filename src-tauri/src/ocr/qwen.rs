@@ -32,8 +32,11 @@ const MAX_EDGE: u32 = 1568;
 const JPEG_QUALITY: u8 = 85;
 
 static HTTP: Lazy<Client> = Lazy::new(|| {
+    // Grounded extraction returns markdown + JSON bboxes — responses can run
+    // 30-90s on complex pages with many illustrations. 60s was too tight and
+    // caused page-8-style hangs that exhausted retries silently.
     Client::builder()
-        .timeout(Duration::from_secs(60))
+        .timeout(Duration::from_secs(120))
         .build()
         .expect("reqwest client build")
 });

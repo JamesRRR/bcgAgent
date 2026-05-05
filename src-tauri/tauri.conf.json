@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "桌游规则助手",
+        "title": "攀达桌游",
         "width": 1100,
         "height": 750,
         "resizable": true,

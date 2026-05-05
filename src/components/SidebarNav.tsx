@@ -30,7 +30,7 @@ export default function SidebarNav() {
     <aside className="w-[220px] shrink-0 bg-cream border-r border-ink/10 flex flex-col">
       <div className="px-6 py-6 flex items-center gap-2">
         <span className="text-2xl">🎲</span>
-        <span className="font-semibold tracking-wide text-ink">bcgAgent</span>
+        <span className="font-semibold tracking-wide text-ink">攀达桌游</span>
       </div>
       <nav className="px-3 py-2 flex flex-col gap-1">
         {NAV_ITEMS.map((item) => {

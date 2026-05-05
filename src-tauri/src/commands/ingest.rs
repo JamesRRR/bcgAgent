@@ -180,23 +180,37 @@ async fn process_one(
     let (markdown, illustrations) = match ocr::extract_grounded(&stored_image).await {
         Ok(pair) => pair,
         Err(e) => {
-            let err_msg = e.to_string();
-            let db = state.db.clone();
-            let page_id_clone = page_id.clone();
-            let _ = tokio::task::spawn_blocking(move || {
-                store_pages::set_ocr_result(&db, &page_id_clone, "failed", None, None)
-            })
-            .await;
-            sink_emit(
-                sink,
-                "ingest:page_failed",
-                &PageFailedEvent {
-                    page_id,
-                    page_number,
-                    error: err_msg,
-                },
+            // Grounded mode generates more output (markdown + JSON) and can
+            // time out on very dense or very large pages. Fall back to plain
+            // text-only OCR so a flaky grounded call doesn't leave the page
+            // unindexed — we just lose illustration crops for that page.
+            tracing::warn!(
+                page_number,
+                error = %e,
+                "grounded OCR failed; falling back to plain markdown"
             );
-            return Err(e);
+            match ocr::extract_markdown(&stored_image).await {
+                Ok(md) => (md, Vec::new()),
+                Err(e2) => {
+                    let err_msg = e2.to_string();
+                    let db = state.db.clone();
+                    let page_id_clone = page_id.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        store_pages::set_ocr_result(&db, &page_id_clone, "failed", None, None)
+                    })
+                    .await;
+                    sink_emit(
+                        sink,
+                        "ingest:page_failed",
+                        &PageFailedEvent {
+                            page_id,
+                            page_number,
+                            error: err_msg,
+                        },
+                    );
+                    return Err(e2);
+                }
+            }
         }
     };
 
