@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "library": "Library",
+    "import": "Import",
+    "ask": "Ask",
+    "settings": "Settings",
+    "handbook": "Handbook"
+  },
+  "library": {
+    "title": "My Board Game Shelf",
+    "empty": "The shelf is empty — import your first rulebook!",
+    "addGame": "Add Game",
+    "addGameDialog": {
+      "title": "Add a Game",
+      "nameZhLabel": "Chinese name",
+      "nameZhPlaceholder": "e.g. 卡坦岛",
+      "nameEnLabel": "English name (optional)",
+      "publisherLabel": "Publisher (optional)",
+      "confirm": "Create",
+      "cancel": "Cancel"
+    }
+  },
+  "import": {
+    "title": "Import Rulebook",
+    "dropzone": "Drop page images here, or click to choose files",
+    "reorderHint": "Drag cards to reorder pages",
+    "startButton": "Start Import",
+    "progress": {
+      "ocr": "Recognizing text…",
+      "embed": "Building index…",
+      "done": "Done",
+      "failed": "Failed"
+    }
+  },
+  "handbook": {
+    "title": "Handbook",
+    "toc": "Table of Contents",
+    "searchPlaceholder": "Search this handbook…",
+    "viewOriginal": "View original page",
+    "noContent": "No text available for this page"
+  },
+  "ask": {
+    "title": "Ask the Rules",
+    "placeholder": "Ask anything — e.g. how do I build a settlement?",
+    "sendButton": "Send",
+    "recordHint": "Hold the mic to record",
+    "gameFilter": "Game",
+    "gameFilterAll": "All games",
+    "citations": {
+      "heading": "Citations"
+    },
+    "history": {
+      "title": "History"
+    },
+    "playTTS": "Play",
+    "stopTTS": "Stop"
+  },
+  "settings": {
+    "title": "Settings",
+    "secrets": {
+      "dashscope": "DashScope (Qwen) API Key",
+      "minimax": "MiniMax API Key",
+      "save": "Save"
+    },
+    "voice": {
+      "label": "TTS language",
+      "zh": "Chinese",
+      "en": "English"
+    },
+    "retrieval": {
+      "kLabel": "Retrieval top-K"
+    }
+  },
+  "common": {
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm"
+  }
+}

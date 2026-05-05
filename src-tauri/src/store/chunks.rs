@@ -1,0 +1,157 @@
+use rusqlite::params;
+use zerocopy::AsBytes;
+
+use super::db::Db;
+use super::jieba;
+use super::models::Chunk;
+use crate::error::AppResult;
+
+/// Insert a chunk, its 1024-d embedding, and its jieba-tokenized FTS row.
+/// All three rows share the same `rowid` so we can join by it later.
+pub fn insert_chunk_with_embedding(
+    db: &Db,
+    page_id: &str,
+    game_id: &str,
+    heading_path: Option<&str>,
+    content: &str,
+    token_count: i64,
+    embedding: &[f32],
+) -> AppResult<i64> {
+    let conn = db.lock();
+    conn.execute(
+        "INSERT INTO chunks (page_id, game_id, heading_path, content, token_count) \
+         VALUES (?, ?, ?, ?, ?)",
+        params![page_id, game_id, heading_path, content, token_count],
+    )?;
+    let chunk_id = conn.last_insert_rowid();
+
+    let embedding_bytes: &[u8] = embedding.as_bytes();
+    conn.execute(
+        "INSERT INTO chunks_vec(rowid, embedding) VALUES (?, ?)",
+        params![chunk_id, embedding_bytes],
+    )?;
+
+    let tokens = jieba::tokenize_zh(content);
+    conn.execute(
+        "INSERT INTO chunks_fts(rowid, tokens, heading_path) VALUES (?, ?, ?)",
+        params![chunk_id, tokens, heading_path],
+    )?;
+
+    Ok(chunk_id)
+}
+
+pub fn get_chunk(db: &Db, id: i64) -> AppResult<Option<Chunk>> {
+    let conn = db.lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, page_id, game_id, heading_path, content, token_count \
+         FROM chunks WHERE id = ?",
+    )?;
+    let mut rows = stmt.query(params![id])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(Chunk {
+            id: row.get(0)?,
+            page_id: row.get(1)?,
+            game_id: row.get(2)?,
+            heading_path: row.get(3)?,
+            content: row.get(4)?,
+            token_count: row.get(5)?,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// kNN search against `chunks_vec`. Returns `(chunk_id, l2_distance)` sorted
+/// best-first (smaller distance = closer). If `game_id` is `Some`, results are
+/// filtered to that game; we over-fetch by 4x then filter, which is good
+/// enough for the small libraries this app handles.
+pub fn vec_search(
+    db: &Db,
+    query: &[f32],
+    game_id: Option<&str>,
+    k: usize,
+) -> AppResult<Vec<(i64, f32)>> {
+    let conn = db.lock();
+    let query_bytes: &[u8] = query.as_bytes();
+
+    let fetch_k = if game_id.is_some() { k * 4 } else { k };
+
+    let mut stmt = conn.prepare(
+        "SELECT rowid, distance FROM chunks_vec \
+         WHERE embedding MATCH ? AND k = ? \
+         ORDER BY distance",
+    )?;
+    let raw: Vec<(i64, f32)> = stmt
+        .query_map(params![query_bytes, fetch_k as i64], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)? as f32))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let filtered: Vec<(i64, f32)> = match game_id {
+        None => raw.into_iter().take(k).collect(),
+        Some(gid) => {
+            let mut out = Vec::with_capacity(k);
+            let mut check = conn.prepare("SELECT 1 FROM chunks WHERE id = ? AND game_id = ?")?;
+            for (id, dist) in raw {
+                let mut rows = check.query(params![id, gid])?;
+                if rows.next()?.is_some() {
+                    out.push((id, dist));
+                    if out.len() >= k {
+                        break;
+                    }
+                }
+            }
+            out
+        }
+    };
+
+    Ok(filtered)
+}
+
+/// FTS5 search against the jieba-tokenized `tokens` column. Returns
+/// `(chunk_id, bm25_score)` sorted best-first (smaller bm25 = better match).
+/// If `game_id` is `Some`, results are filtered to that game post-hoc.
+pub fn fts_search(
+    db: &Db,
+    query: &str,
+    game_id: Option<&str>,
+    k: usize,
+) -> AppResult<Vec<(i64, f32)>> {
+    let tokenized = jieba::tokenize_zh(query);
+    let conn = db.lock();
+
+    let fetch_k = if game_id.is_some() { k * 4 } else { k };
+
+    let mut stmt = conn.prepare(
+        "SELECT rowid, bm25(chunks_fts) FROM chunks_fts \
+         WHERE tokens MATCH ? \
+         ORDER BY bm25(chunks_fts) LIMIT ?",
+    )?;
+    let raw: Vec<(i64, f32)> = stmt
+        .query_map(params![tokenized, fetch_k as i64], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)? as f32))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(stmt);
+
+    let filtered: Vec<(i64, f32)> = match game_id {
+        None => raw.into_iter().take(k).collect(),
+        Some(gid) => {
+            let mut out = Vec::with_capacity(k);
+            let mut check = conn.prepare("SELECT 1 FROM chunks WHERE id = ? AND game_id = ?")?;
+            for (id, score) in raw {
+                let mut rows = check.query(params![id, gid])?;
+                if rows.next()?.is_some() {
+                    out.push((id, score));
+                    if out.len() >= k {
+                        break;
+                    }
+                }
+            }
+            out
+        }
+    };
+
+    Ok(filtered)
+}

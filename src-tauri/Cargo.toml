@@ -1,0 +1,57 @@
+[package]
+name = "bcgagent"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bcgagent_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# tauri
+tauri = { version = "2", features = [] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-shell = "2"
+
+# common
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+once_cell = "1"
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["formatting", "serde"] }
+futures = "0.3"
+tokio-stream = "0.1"
+async-stream = "0.3"
+dirs = "5"
+
+# storage (Wave 1.2)
+rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
+sqlite-vec = "0.1"
+jieba-rs = "0.7"
+zerocopy = "0.7"
+
+# http (Wave 1.3 + 1.5)
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+eventsource-stream = "0.2"
+bytes = "1"
+
+# images (Wave 1.3)
+image = "0.25"
+base64 = "0.22"
+
+# embeddings (Wave 1.4)
+fastembed = "4"
+
+# audio (Wave 1.6)
+tempfile = "3"
+hound = "3"

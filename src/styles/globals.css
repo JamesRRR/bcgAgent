@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #faf6ee;
+    --ink: #2a2620;
+    --accent: #c8553d;
+    --paper: #fffcf5;
+    --shelf: #8b5a3c;
+  }
+
+  .dark {
+    --bg: #1a1815;
+    --ink: #f4ede0;
+    --paper: #25221d;
+    --accent: #d8654d;
+    --shelf: #5b3d2b;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", "Noto Sans SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}

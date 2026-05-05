@@ -1,0 +1,82 @@
+{
+  "nav": {
+    "library": "书架",
+    "import": "导入",
+    "ask": "问规则",
+    "settings": "设置",
+    "handbook": "规则书"
+  },
+  "library": {
+    "title": "我的桌游书架",
+    "empty": "书架空空如也，导入第一本规则书吧～",
+    "addGame": "添加桌游",
+    "addGameDialog": {
+      "title": "新增桌游",
+      "nameZhLabel": "中文名",
+      "nameZhPlaceholder": "例如：卡坦岛",
+      "nameEnLabel": "英文名（可选）",
+      "publisherLabel": "出版方（可选）",
+      "confirm": "创建",
+      "cancel": "取消"
+    }
+  },
+  "import": {
+    "title": "导入规则书",
+    "dropzone": "拖入页面图片，或点击选择文件",
+    "reorderHint": "拖动卡片以调整顺序",
+    "startButton": "开始导入",
+    "progress": {
+      "ocr": "正在识别文字…",
+      "embed": "正在建立索引…",
+      "done": "已完成",
+      "failed": "失败"
+    }
+  },
+  "handbook": {
+    "title": "规则书",
+    "toc": "目录",
+    "searchPlaceholder": "搜索规则书…",
+    "viewOriginal": "查看原页",
+    "noContent": "本页暂无可用文字"
+  },
+  "ask": {
+    "title": "问规则",
+    "placeholder": "提问吧～例如：城堡怎么建？",
+    "sendButton": "发送",
+    "recordHint": "按住麦克风说话",
+    "gameFilter": "桌游范围",
+    "gameFilterAll": "全部",
+    "citations": {
+      "heading": "引用片段"
+    },
+    "history": {
+      "title": "历史记录"
+    },
+    "playTTS": "朗读",
+    "stopTTS": "停止"
+  },
+  "settings": {
+    "title": "设置",
+    "secrets": {
+      "dashscope": "DashScope (Qwen) API Key",
+      "minimax": "MiniMax API Key",
+      "save": "保存"
+    },
+    "voice": {
+      "label": "朗读语言",
+      "zh": "中文",
+      "en": "English"
+    },
+    "retrieval": {
+      "kLabel": "检索条数 K"
+    }
+  },
+  "common": {
+    "loading": "加载中…",
+    "error": "出错了",
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirm": "确定"
+  }
+}

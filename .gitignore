@@ -1,0 +1,42 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+**/*.rs.bk
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Bundled / downloaded models & sidecars (large binaries)
+**/*.bin
+**/*.onnx
+**/*.gguf
+**/*.safetensors
+src-tauri/binaries/whisper-cli-*
+!src-tauri/binaries/.gitkeep
+
+# Secrets and user data
+secrets/
+*.key
+.env
+.env.*
+!.env.example
