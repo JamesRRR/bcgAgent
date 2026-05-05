@@ -5,7 +5,7 @@ use crate::store::{games, Game};
 
 use super::AppState;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn games_list(state: State<'_, AppState>) -> AppResult<Vec<Game>> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || games::list_games(&db))
@@ -13,7 +13,7 @@ pub async fn games_list(state: State<'_, AppState>) -> AppResult<Vec<Game>> {
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn game_create(
     state: State<'_, AppState>,
     name_zh: String,
@@ -28,7 +28,7 @@ pub async fn game_create(
     .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn game_get(state: State<'_, AppState>, id: String) -> AppResult<Option<Game>> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || games::get_game(&db, &id))
@@ -36,7 +36,7 @@ pub async fn game_get(state: State<'_, AppState>, id: String) -> AppResult<Optio
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn game_set_cover(
     state: State<'_, AppState>,
     id: String,

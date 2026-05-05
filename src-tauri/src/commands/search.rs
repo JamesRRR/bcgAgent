@@ -48,7 +48,7 @@ fn hydrate(db: &Db, hits: Vec<(i64, f32)>) -> AppResult<Vec<SearchHit>> {
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn search_keyword(
     state: State<'_, AppState>,
     query: String,
@@ -64,7 +64,7 @@ pub async fn search_keyword(
     .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn search_semantic(
     state: State<'_, AppState>,
     query: String,

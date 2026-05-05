@@ -16,7 +16,7 @@ pub mod commands;
 #[cfg(feature = "test-server")]
 pub mod test_server;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 fn ping() -> &'static str {
     "pong"
 }

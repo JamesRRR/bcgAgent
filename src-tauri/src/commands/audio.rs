@@ -8,7 +8,7 @@ use crate::error::{AppError, AppResult};
 
 use super::AppState;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn transcribe(wav_bytes: Vec<u8>, lang_hint: String) -> AppResult<String> {
     if wav_bytes.is_empty() {
         return Err(AppError::Audio("empty wav payload".into()));
@@ -28,7 +28,7 @@ pub async fn transcribe(wav_bytes: Vec<u8>, lang_hint: String) -> AppResult<Stri
     result
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn speak(state: State<'_, AppState>, text: String, lang: String) -> AppResult<String> {
     let handle = audio_mod::speak(&text, &lang)?;
     let id = Uuid::new_v4().to_string();
@@ -36,7 +36,7 @@ pub fn speak(state: State<'_, AppState>, text: String, lang: String) -> AppResul
     Ok(id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn speak_cancel(state: State<'_, AppState>, handle_id: String) -> AppResult<()> {
     let popped = state.tts.lock().remove(&handle_id);
     if let Some(h) = popped {

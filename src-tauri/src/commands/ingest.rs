@@ -251,7 +251,7 @@ pub async fn run_ingest(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn ingest_pages(
     state: State<'_, AppState>,
     app_handle: AppHandle,

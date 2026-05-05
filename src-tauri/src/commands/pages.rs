@@ -5,7 +5,7 @@ use crate::store::{pages, qa, Page, QAHistory};
 
 use super::AppState;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn pages_list_by_game(
     state: State<'_, AppState>,
     game_id: String,
@@ -16,7 +16,7 @@ pub async fn pages_list_by_game(
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn page_get(state: State<'_, AppState>, id: String) -> AppResult<Option<Page>> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || pages::get_page(&db, &id))
@@ -24,7 +24,7 @@ pub async fn page_get(state: State<'_, AppState>, id: String) -> AppResult<Optio
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn qa_list(
     state: State<'_, AppState>,
     game_id: Option<String>,
