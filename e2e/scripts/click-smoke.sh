@@ -133,7 +133,7 @@ osascript -e 'tell application "System Events" to tell process "bcgagent" to set
 sleep 0.5
 TEXT="$(collect_text)"
 # Empty state shows the EmptyShelf SVG copy, NOT the title heading.
-assert_contains "$TEXT" "书架空空如也" "empty-shelf copy rendered"
+assert_contains "$TEXT" "桌游架空空如也" "empty-shelf copy rendered"
 
 # 2) Click 添加桌游 (in empty state, the button is in the page body)
 step "click 添加桌游"
@@ -175,19 +175,56 @@ if [[ "$TEXT" == *"missing required key"* ]] || [[ "$TEXT" == *"invalid args"* ]
 fi
 
 # 5) Click 书架 in sidebar — exercises games_list
-step "click 书架 (games_list command)"
-COORDS="$(btn_center "书架")"
-[ -n "$COORDS" ] || fail "couldn't locate 书架 button"
+step "click 桌游架 (games_list command)"
+COORDS="$(btn_center "桌游架")"
+[ -n "$COORDS" ] || fail "couldn't locate 桌游架 button"
 cliclick "c:$COORDS" >/dev/null
 sleep 2
 TEXT="$(collect_text)"
-assert_contains "$TEXT" "我的桌游书架" "back on Library after games_list"
+assert_contains "$TEXT" "我的桌游架" "back on Library after games_list"
 assert_contains "$TEXT" "卡坦岛" "new game card appears in shelf"
 
-# 6) Click the 卡坦岛 game card — exercises pages_list_by_game (the originally broken path)
-step "click 卡坦岛 card (pages_list_by_game command)"
-COORDS="$(btn_center "卡坦岛")"
-[ -n "$COORDS" ] || fail "couldn't locate 卡坦岛 game card"
+# 6) Click the 重命名 (rename) pencil — exercises game_rename
+step "click 重命名 (game_rename command)"
+COORDS="$(btn_center "重命名")"
+[ -n "$COORDS" ] || fail "couldn't locate 重命名 button (rename pencil)"
+cliclick "c:$COORDS" >/dev/null
+sleep 1
+TEXT="$(collect_text)"
+assert_contains "$TEXT" "重命名桌游" "rename dialog opened"
+
+# Dialog auto-selects on open, but React re-render can race the select() —
+# do an explicit CMD+A so the existing text is replaced, not appended.
+osascript -e 'tell application "System Events" to keystroke "a" using command down' >/dev/null
+sleep 0.2
+osascript -e 'set the clipboard to "卡坦岛改名"' >/dev/null
+osascript -e 'tell application "System Events" to keystroke "v" using command down' >/dev/null
+sleep 0.3
+
+step "click 保存 (game_rename submit)"
+COORDS="$(btn_center "保存")"
+[ -n "$COORDS" ] || fail "couldn't locate 保存 button"
+cliclick "c:$COORDS" >/dev/null
+sleep 3
+TEXT="$(collect_text)"
+if [[ "$TEXT" == *"missing required key"* ]] || [[ "$TEXT" == *"invalid args"* ]]; then
+  fail "Tauri IPC arg-name regression on game_rename: $TEXT"
+fi
+assert_contains "$TEXT" "卡坦岛改名" "shelf shows renamed game"
+
+# 7) Click the renamed card — exercises pages_list_by_game (the originally broken path)
+# AX tree can lag after React re-render; retry up to 5×
+step "click 卡坦岛改名 card (pages_list_by_game command)"
+COORDS=""
+for i in 1 2 3 4 5; do
+  COORDS="$(btn_center "卡坦岛改名")"
+  [ -n "$COORDS" ] && break
+  sleep 1
+done
+if [ -z "$COORDS" ]; then
+  echo "DEBUG dump after rename: $TEXT" >&2
+  fail "couldn't locate 卡坦岛改名 game card (AX cache stale?)"
+fi
 cliclick "c:$COORDS" >/dev/null
 sleep 3
 TEXT="$(collect_text)"

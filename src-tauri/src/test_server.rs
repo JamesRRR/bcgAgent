@@ -136,6 +136,27 @@ async fn game_set_cover(
     Ok(Json(()))
 }
 
+#[derive(Deserialize)]
+struct GameRenameBody {
+    id: String,
+    name_zh: String,
+    name_en: Option<String>,
+}
+
+async fn game_rename(
+    State(ctx): State<AppCtx>,
+    Json(body): Json<GameRenameBody>,
+) -> Result<Json<()>, (StatusCode, String)> {
+    let db = ctx.state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        store_games::update_name(&db, &body.id, &body.name_zh, body.name_en.as_deref())
+    })
+    .await
+    .map_err(err500)?
+    .map_err(err500)?;
+    Ok(Json(()))
+}
+
 // ---------- pages ----------
 
 #[derive(Deserialize)]
@@ -550,6 +571,7 @@ pub fn run_test_server() {
             .route("/api/game_create", post(game_create))
             .route("/api/game_get", post(game_get))
             .route("/api/game_set_cover", post(game_set_cover))
+            .route("/api/game_rename", post(game_rename))
             .route("/api/pages_list_by_game", post(pages_list_by_game))
             .route("/api/page_get", post(page_get))
             .route("/api/qa_list", post(qa_list))

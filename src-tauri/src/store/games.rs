@@ -80,6 +80,20 @@ pub fn set_cover(db: &Db, game_id: &str, cover_path: &str) -> AppResult<()> {
     Ok(())
 }
 
+pub fn update_name(
+    db: &Db,
+    game_id: &str,
+    name_zh: &str,
+    name_en: Option<&str>,
+) -> AppResult<()> {
+    let conn = db.lock();
+    conn.execute(
+        "UPDATE games SET name_zh = ?, name_en = ? WHERE id = ?",
+        params![name_zh, name_en, game_id],
+    )?;
+    Ok(())
+}
+
 pub fn increment_page_count(db: &Db, game_id: &str) -> AppResult<()> {
     let conn = db.lock();
     conn.execute(

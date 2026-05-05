@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import EmptyShelf from "@/components/EmptyShelf";
 import GameCard from "@/components/library/GameCard";
 import NewGameDialog from "@/components/library/NewGameDialog";
+import RenameGameDialog from "@/components/library/RenameGameDialog";
 import { games as gamesIpc, type Game } from "@/lib/ipc";
 import { useApp } from "@/state";
 import { useToaster } from "@/components/Toaster";
@@ -15,6 +16,7 @@ export default function Library() {
   const toaster = useToaster();
   const [games, setGames] = useState<Game[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [renaming, setRenaming] = useState<Game | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +46,29 @@ export default function Library() {
       toaster.push(`${t("library.title")} ✓`, "success");
       setDialogOpen(false);
       setPage("import", newId);
+    } catch (e) {
+      toaster.push(String(e), "error");
+    }
+  };
+
+  const handleRename = async (
+    name_zh: string,
+    name_en: string | undefined,
+  ) => {
+    if (!renaming) return;
+    try {
+      await gamesIpc.rename(renaming.id, name_zh, name_en);
+      setGames((cur) =>
+        cur
+          ? cur.map((g) =>
+              g.id === renaming.id
+                ? { ...g, name_zh, name_en: name_en ?? null }
+                : g,
+            )
+          : cur,
+      );
+      setRenaming(null);
+      toaster.push(`${t("library.rename")} ✓`, "success");
     } catch (e) {
       toaster.push(String(e), "error");
     }
@@ -103,6 +128,7 @@ export default function Library() {
             key={g.id}
             game={g}
             onClick={() => setPage("handbook", g.id)}
+            onRename={() => setRenaming(g)}
           />
         ))}
       </div>
@@ -111,6 +137,13 @@ export default function Library() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onConfirm={handleCreate}
+      />
+      <RenameGameDialog
+        open={renaming !== null}
+        initialNameZh={renaming?.name_zh ?? ""}
+        initialNameEn={renaming?.name_en ?? null}
+        onClose={() => setRenaming(null)}
+        onConfirm={handleRename}
       />
     </section>
   );

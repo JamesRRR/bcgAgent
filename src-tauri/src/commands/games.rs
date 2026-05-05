@@ -47,3 +47,18 @@ pub async fn game_set_cover(
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn game_rename(
+    state: State<'_, AppState>,
+    id: String,
+    name_zh: String,
+    name_en: Option<String>,
+) -> AppResult<()> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        games::update_name(&db, &id, &name_zh, name_en.as_deref())
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+}

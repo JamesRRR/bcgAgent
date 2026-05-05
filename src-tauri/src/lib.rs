@@ -41,6 +41,7 @@ pub fn run() {
             commands::games::game_create,
             commands::games::game_get,
             commands::games::game_set_cover,
+            commands::games::game_rename,
             commands::pages::pages_list_by_game,
             commands::pages::page_get,
             commands::pages::qa_list,

@@ -57,7 +57,7 @@ describe("Library", () => {
 
     // i18n empty key
     expect(
-      await screen.findByText(/书架空空如也|empty/i),
+      await screen.findByText(/桌游架空空如也|empty/i),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /添加桌游|add game/i }),

@@ -1,15 +1,20 @@
 {
   "nav": {
-    "library": "书架",
+    "library": "桌游架",
     "import": "导入",
     "ask": "问规则",
     "settings": "设置",
     "handbook": "规则书"
   },
   "library": {
-    "title": "我的桌游书架",
-    "empty": "书架空空如也，导入第一本规则书吧～",
+    "title": "我的桌游架",
+    "empty": "桌游架空空如也，导入第一本规则书吧～",
     "addGame": "添加桌游",
+    "rename": "重命名",
+    "renameDialog": {
+      "title": "重命名桌游",
+      "confirm": "保存"
+    },
     "addGameDialog": {
       "title": "新增桌游",
       "nameZhLabel": "中文名",

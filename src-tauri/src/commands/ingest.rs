@@ -255,6 +255,11 @@ async fn process_one(
     Ok(chunk_count)
 }
 
+/// How many pages we OCR concurrently. OCR is network-bound (~10s/page
+/// against DashScope), so 4-way concurrency gives ~4x throughput without
+/// hammering the API. DB writes serialize through the connection mutex.
+const INGEST_CONCURRENCY: usize = 4;
+
 /// Transport-agnostic ingest orchestration. Used by both the Tauri command
 /// and the HTTP test-server.
 pub async fn run_ingest(
@@ -263,19 +268,32 @@ pub async fn run_ingest(
     game_id: String,
     image_paths: Vec<String>,
 ) -> AppResult<()> {
-    let mut succeeded = 0usize;
-    let mut failed = 0usize;
-    for (idx, path_str) in image_paths.iter().enumerate() {
-        let page_number = (idx as i64) + 1;
-        let src = PathBuf::from(path_str);
-        match process_one(state, &sink, &game_id, page_number, &src).await {
-            Ok(_) => succeeded += 1,
-            Err(e) => {
-                tracing::error!("ingest page {page_number} failed: {e}");
-                failed += 1;
+    use futures::stream::{self, StreamExt};
+
+    let total = image_paths.len();
+    let results: Vec<bool> = stream::iter(image_paths.into_iter().enumerate())
+        .map(|(idx, path_str)| {
+            let sink = sink.clone();
+            let game_id = game_id.clone();
+            async move {
+                let page_number = (idx as i64) + 1;
+                let src = PathBuf::from(&path_str);
+                match process_one(state, &sink, &game_id, page_number, &src).await {
+                    Ok(_) => true,
+                    Err(e) => {
+                        tracing::error!("ingest page {page_number} failed: {e}");
+                        false
+                    }
+                }
             }
-        }
-    }
+        })
+        .buffer_unordered(INGEST_CONCURRENCY.min(total.max(1)))
+        .collect()
+        .await;
+
+    let succeeded = results.iter().filter(|ok| **ok).count();
+    let failed = results.len() - succeeded;
+
     sink_emit(
         &sink,
         "ingest:done",

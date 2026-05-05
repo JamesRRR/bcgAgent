@@ -1,15 +1,20 @@
 {
   "nav": {
-    "library": "Library",
+    "library": "Shelf",
     "import": "Import",
     "ask": "Ask",
     "settings": "Settings",
     "handbook": "Handbook"
   },
   "library": {
-    "title": "My Board Game Shelf",
+    "title": "My Game Shelf",
     "empty": "The shelf is empty — import your first rulebook!",
     "addGame": "Add Game",
+    "rename": "Rename",
+    "renameDialog": {
+      "title": "Rename Game",
+      "confirm": "Save"
+    },
     "addGameDialog": {
       "title": "Add a Game",
       "nameZhLabel": "Chinese name",
