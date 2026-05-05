@@ -1,5 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { inTauri } from "@/lib/transport";
 import type { Page } from "@/lib/ipc";
 import MarkdownView from "./MarkdownView";
 
@@ -25,7 +27,16 @@ const PageReader = forwardRef<PageReaderHandle, Props>(function PageReader(
       const el = containerRef.current?.querySelector<HTMLElement>(
         `#page-${pageNumber}`,
       );
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!el) return;
+      // If the user is searching and there's a highlighted match on this
+      // page, jump to the first <mark> instead of the article top so the
+      // hit is actually visible.
+      const mark = el.querySelector<HTMLElement>("mark");
+      const target: HTMLElement = mark ?? el;
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: mark ? "center" : "start",
+      });
     },
   }));
 
@@ -104,6 +115,15 @@ const PageReader = forwardRef<PageReaderHandle, Props>(function PageReader(
                 </span>
               )}
             </header>
+            {inTauri && p.image_path && (
+              <img
+                src={convertFileSrc(p.image_path)}
+                alt={`page ${p.page_number} original`}
+                className="block w-full h-auto rounded border border-ink/10 mb-6"
+                loading="lazy"
+                draggable={false}
+              />
+            )}
             {p.ocr_status === "done" && p.ocr_markdown ? (
               <MarkdownView source={p.ocr_markdown} highlight={highlight} />
             ) : (

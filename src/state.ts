@@ -1,6 +1,12 @@
 import { createContext, useContext } from "react";
 
-export type Page = "library" | "import" | "handbook" | "ask" | "settings";
+export type Page =
+  | "library"
+  | "import"
+  | "handbook"
+  | "walkthrough"
+  | "ask"
+  | "settings";
 
 export type AppCtx = {
   page: Page;

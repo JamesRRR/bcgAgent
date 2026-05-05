@@ -49,6 +49,7 @@ impl Db {
     fn init(conn: Connection) -> AppResult<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(MIGRATIONS)?;
+        retokenize_fts_if_outdated(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -58,4 +59,54 @@ impl Db {
     pub(crate) fn lock(&self) -> parking_lot::MutexGuard<'_, Connection> {
         self.conn.lock()
     }
+}
+
+/// Bump this whenever the indexing-side jieba behavior changes. On startup we
+/// compare against the value persisted in `settings`; if they differ, we
+/// rebuild every row of `chunks_fts` from the canonical `chunks.content`.
+const FTS_INDEX_VERSION: &str = "v2-search-mode";
+
+fn retokenize_fts_if_outdated(conn: &Connection) -> AppResult<()> {
+    use rusqlite::params;
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'fts_index_version'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    if stored.as_deref() == Some(FTS_INDEX_VERSION) {
+        return Ok(());
+    }
+    let chunk_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+    if chunk_count > 0 {
+        tracing::info!(
+            "rebuilding chunks_fts ({} rows) for tokenizer={}",
+            chunk_count,
+            FTS_INDEX_VERSION
+        );
+        conn.execute("DELETE FROM chunks_fts", [])?;
+        let mut stmt =
+            conn.prepare("SELECT id, content, heading_path FROM chunks")?;
+        let rows: Vec<(i64, String, Option<String>)> = stmt
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(stmt);
+        for (id, content, heading) in rows {
+            let tokens = super::jieba::tokenize_for_index(&content);
+            conn.execute(
+                "INSERT INTO chunks_fts(rowid, tokens, heading_path) VALUES (?, ?, ?)",
+                params![id, tokens, heading],
+            )?;
+        }
+    }
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES('fts_index_version', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![FTS_INDEX_VERSION],
+    )?;
+    Ok(())
 }

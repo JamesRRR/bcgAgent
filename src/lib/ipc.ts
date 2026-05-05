@@ -146,6 +146,18 @@ export const ask = {
     listen<AskDone>("ask:done", (e) => cb(e.payload)),
 };
 
+// ----- Walkthrough (beginner tutorial generation) -----
+
+export type WalkthroughDone = { game_id: string };
+
+export const walkthrough = {
+  run: (game_id: string) => invoke<string>("walkthrough_run", { game_id }),
+  onToken: (cb: (token: string) => void): Promise<UnlistenFn> =>
+    listen<string>("walkthrough:token", (e) => cb(e.payload)),
+  onDone: (cb: (e: WalkthroughDone) => void): Promise<UnlistenFn> =>
+    listen<WalkthroughDone>("walkthrough:done", (e) => cb(e.payload)),
+};
+
 // ----- Audio -----
 
 export type LangHint = "auto" | "zh" | "en";

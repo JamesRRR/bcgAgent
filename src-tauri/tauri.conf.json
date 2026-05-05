@@ -22,7 +22,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/games/**",
+          "$APPDATA/audio/**",
+          "$HOME/Library/Application Support/bcgAgent/**"
+        ]
+      }
     }
   },
   "bundle": {

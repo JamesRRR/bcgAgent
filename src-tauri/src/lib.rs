@@ -49,6 +49,7 @@ pub fn run() {
             commands::search::search_semantic,
             commands::ingest::ingest_pages,
             commands::ask::ask,
+            commands::walkthrough::walkthrough_run,
             commands::audio::transcribe,
             commands::audio::speak,
             commands::audio::speak_cancel,

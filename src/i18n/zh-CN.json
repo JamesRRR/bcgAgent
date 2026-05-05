@@ -45,6 +45,14 @@
     "viewOriginal": "查看原页",
     "noContent": "本页暂无可用文字"
   },
+  "walkthrough": {
+    "title": "新手走查",
+    "intro": "为完全没玩过的新手生成一份循序渐进的入门教程：游戏目标、准备、流程、关键规则与小贴士。",
+    "generate": "生成走查",
+    "regenerate": "重新生成",
+    "generating": "生成中",
+    "pickGame": "先选一本规则书"
+  },
   "ask": {
     "title": "问规则",
     "placeholder": "提问吧～例如：城堡怎么建？",

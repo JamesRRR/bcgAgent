@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/state";
 import { useToaster } from "@/components/Toaster";
@@ -204,6 +204,17 @@ export default function Handbook() {
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setPage("walkthrough", selectedGameId)}
+          aria-label={t("walkthrough.title")}
+          title={t("walkthrough.title")}
+        >
+          <Sparkles className="w-4 h-4 mr-1.5 text-accent" />
+          <span>{t("walkthrough.title")}</span>
+        </Button>
 
         <SearchBar
           value={query}

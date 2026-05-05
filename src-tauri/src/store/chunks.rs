@@ -31,7 +31,7 @@ pub fn insert_chunk_with_embedding(
         params![chunk_id, embedding_bytes],
     )?;
 
-    let tokens = jieba::tokenize_zh(content);
+    let tokens = jieba::tokenize_for_index(content);
     conn.execute(
         "INSERT INTO chunks_fts(rowid, tokens, heading_path) VALUES (?, ?, ?)",
         params![chunk_id, tokens, heading_path],
@@ -118,7 +118,7 @@ pub fn fts_search(
     game_id: Option<&str>,
     k: usize,
 ) -> AppResult<Vec<(i64, f32)>> {
-    let tokenized = jieba::tokenize_zh(query);
+    let tokenized = jieba::tokenize_for_query(query);
     let conn = db.lock();
 
     let fetch_k = if game_id.is_some() { k * 4 } else { k };
@@ -154,4 +154,29 @@ pub fn fts_search(
     };
 
     Ok(filtered)
+}
+
+/// Fetch every chunk for a game, joined with its page so callers get the
+/// page number and heading without extra round-trips. Ordered by page then
+/// chunk insertion order so the result reads top-to-bottom like the book.
+/// Used by the walkthrough generator, which needs the full rulebook in
+/// context rather than retrieval-filtered slices.
+pub fn list_chunks_for_game(
+    db: &Db,
+    game_id: &str,
+) -> AppResult<Vec<(i64, i64, Option<String>, String)>> {
+    let conn = db.lock();
+    let mut stmt = conn.prepare(
+        "SELECT c.id, p.page_number, c.heading_path, c.content \
+         FROM chunks c \
+         JOIN pages p ON p.id = c.page_id \
+         WHERE c.game_id = ? \
+         ORDER BY p.page_number ASC, c.id ASC",
+    )?;
+    let rows: Vec<(i64, i64, Option<String>, String)> = stmt
+        .query_map(params![game_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }

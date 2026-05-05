@@ -15,7 +15,7 @@ tauri = { version = "2", features = ["test"] }
 
 [dependencies]
 # tauri
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"

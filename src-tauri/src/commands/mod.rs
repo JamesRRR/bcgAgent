@@ -13,6 +13,7 @@ pub mod ingest;
 pub mod pages;
 pub mod search;
 pub mod settings;
+pub mod walkthrough;
 
 /// Global Tauri-managed state. The `db` is cloneable (Arc<Mutex<Connection>>);
 /// `tts` keeps live `SpeechHandle`s keyed by uuid so the UI can cancel them.

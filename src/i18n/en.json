@@ -45,6 +45,14 @@
     "viewOriginal": "View original page",
     "noContent": "No text available for this page"
   },
+  "walkthrough": {
+    "title": "Walkthrough",
+    "intro": "Generate a beginner-friendly walkthrough: goal, setup, turn flow, key rules, and tips.",
+    "generate": "Generate",
+    "regenerate": "Regenerate",
+    "generating": "Generating",
+    "pickGame": "Pick a rulebook first"
+  },
   "ask": {
     "title": "Ask the Rules",
     "placeholder": "Ask anything — e.g. how do I build a settlement?",
