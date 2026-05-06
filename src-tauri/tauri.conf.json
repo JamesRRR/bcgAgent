@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "bcgAgent",
+  "productName": "攀达桌游",
   "version": "0.1.0",
   "identifier": "com.bcgagent.app",
   "build": {

@@ -7,7 +7,7 @@
 #
 # Drives the bundled .app via macOS Accessibility (osascript + cliclick):
 #   1. Wipe DB and games dir
-#   2. Launch /Applications/bcgAgent.app
+#   2. Launch /Applications/攀达桌游.app
 #   3. Click "添加桌游" → fill form → submit (game_create)
 #   4. Click 书架 (games_list)
 #   5. Click the game card (pages_list_by_game) — the originally failing path
@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-APP_PATH="/Applications/bcgAgent.app"
+APP_PATH="/Applications/攀达桌游.app"
 APP_DATA="$HOME/Library/Application Support/bcgAgent"
 
 red()   { printf "\033[31m%s\033[0m\n" "$*" >&2; }
@@ -34,7 +34,7 @@ if ! command -v cliclick >/dev/null; then
   fail "cliclick not installed (brew install cliclick)"
 fi
 if [ ! -d "$APP_PATH" ]; then
-  fail "$APP_PATH not found — run: pnpm tauri:build && cp -R src-tauri/target/release/bundle/macos/bcgAgent.app /Applications/"
+  fail "$APP_PATH not found — run: pnpm tauri:build && cp -R src-tauri/target/release/bundle/macos/攀达桌游.app /Applications/"
 fi
 
 # Reset state so we run from a clean shelf

@@ -28,9 +28,9 @@ for APP in "${APPS[@]}"; do
   else
     /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string $MIC_DESC" "$PLIST"
   fi
-  # Display name shown by macOS in the Dock, menu bar, and Finder. Bundle
-  # name on disk stays ASCII (bcgAgent.app) so click-smoke + DMG packaging
-  # keep working — only the user-facing label is Chinese.
+  # Display name shown by macOS in the Dock, menu bar, and Finder. The .app
+  # folder on disk is now also Chinese (攀达桌游.app, set via productName)
+  # so Spotlight indexes it under the same name.
   for KEY in CFBundleDisplayName CFBundleName; do
     if /usr/libexec/PlistBuddy -c "Print :$KEY" "$PLIST" >/dev/null 2>&1; then
       /usr/libexec/PlistBuddy -c "Set :$KEY $DISPLAY_NAME" "$PLIST"

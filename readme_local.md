@@ -1,5 +1,5 @@
 ---
-name: "桌游规则助手"
+name: "攀达桌游"
 description: "拍照导入桌游规则书、语音/文字提问，本地 RAG + 中文优先 OCR/LLM"
 category: "macos-app"
 status: "active"
@@ -18,7 +18,7 @@ tech:
 github: "https://github.com/JamesRRR/bcgAgent.git"
 launch:
   type: "app"
-  command: "open -a bcgAgent"
+  command: "open -a 攀达桌游"
 tags:
   - "boardgame"
   - "rag"
@@ -29,13 +29,13 @@ created: "2026-05-05"
 updated: "2026-05-05"
 ---
 
-# bcgAgent · 桌游规则助手
+# 攀达桌游 (bcgAgent)
 
 一个 macOS 桌面应用：拍照导入桌游规则书每一页，自动 OCR 成结构化电子手册，再用语音或文字按规则提问，回答附带页码引用。中文优先。
 
 ## 启动
 
-直接打开 `/Applications/桌游规则助手.app`，或在 Launchr 里点击启动。
+直接打开 `/Applications/攀达桌游.app`，或在 Launchr 里点击启动（Spotlight 搜「攀达桌游」也能找到）。
 
 首次使用前请在 **设置** 中填写：
 
@@ -97,4 +97,4 @@ cargo test --test voice_roundtrip -- --ignored --nocapture      # 真实 STT/TTS
 pnpm tauri:build        # 注意冒号 — 会自动打 Info.plist 麦克风权限并重打包 DMG
 ```
 
-产物：`src-tauri/target/release/bundle/dmg/bcgAgent_0.1.0_aarch64.dmg`
+产物：`src-tauri/target/release/bundle/dmg/攀达桌游_0.1.0_aarch64.dmg`
