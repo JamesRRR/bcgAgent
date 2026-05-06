@@ -36,23 +36,27 @@ export default function Walkthrough() {
     };
   }, []);
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const generate = async () => {
     if (!selectedGameId || streaming) return;
     setContent("");
+    setErrorMsg(null);
     setStreaming(true);
 
-    // Register listeners BEFORE invoking the command so we don't miss tokens.
-    const unsubs: UnlistenFn[] = [];
-    unsubs.push(
-      await walkthrough.onToken((tok) => setContent((cur) => cur + tok)),
-      await walkthrough.onDone(() => setStreaming(false)),
-    );
-    unlistenersRef.current.push(...unsubs);
-
     try {
+      // Register listeners BEFORE invoking the command so we don't miss tokens.
+      const unsubs = await Promise.all([
+        walkthrough.onToken((tok) => setContent((cur) => cur + tok)),
+        walkthrough.onDone(() => setStreaming(false)),
+      ]);
+      unlistenersRef.current.push(...unsubs);
       await walkthrough.run(selectedGameId);
     } catch (e) {
-      toaster.push(String(e), "error");
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("walkthrough.generate failed:", e);
+      setErrorMsg(msg);
+      toaster.push(msg, "error");
       setStreaming(false);
     }
   };
@@ -117,6 +121,20 @@ export default function Walkthrough() {
                 <Sparkles className="w-4 h-4 mr-2" />
                 {t("walkthrough.generate")}
               </Button>
+              {errorMsg && (
+                <div
+                  role="alert"
+                  className="mt-4 p-3 rounded-md bg-rose-50 border border-rose-200 text-sm text-rose-900"
+                >
+                  <div className="font-medium mb-1">
+                    {t("common.error")}
+                  </div>
+                  <div className="text-rose-800/90 break-words">{errorMsg}</div>
+                  <div className="text-xs text-rose-700/70 mt-2">
+                    {t("walkthrough.errorHint")}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

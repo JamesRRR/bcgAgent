@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Moon, Sun } from "lucide-react";
+import { Moon, RefreshCw, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToaster } from "@/components/Toaster";
 import { settings } from "@/lib/ipc";
 import SecretField from "@/components/settings/SecretField";
 import Section from "@/components/settings/Section";
+import { getVersion } from "@tauri-apps/api/app";
 
 const THEME_KEY = "theme";
 const TTS_LANG_KEY = "tts_lang";
@@ -216,6 +217,33 @@ export default function Settings() {
               : "Switch to dark"}
         </Button>
       </Section>
+
+      <Section title={isZh ? "关于 / 更新" : "About / Updates"}>
+        <UpdateRow isZh={isZh} />
+      </Section>
     </section>
+  );
+}
+
+function UpdateRow({ isZh }: { isZh: boolean }) {
+  const [version, setVersion] = useState<string>("");
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(""));
+  }, []);
+  const triggerCheck = () => {
+    window.dispatchEvent(new CustomEvent("bcg:check-for-update"));
+  };
+  return (
+    <div className="flex items-center gap-4">
+      <div className="text-sm text-ink/70 dark:text-cream/70">
+        {isZh ? "当前版本" : "Current version"}: <span className="font-mono">v{version || "?"}</span>
+      </div>
+      <Button variant="outline" onClick={triggerCheck} className="gap-2">
+        <RefreshCw className="w-4 h-4" />
+        {isZh ? "检查更新" : "Check for updates"}
+      </Button>
+    </div>
   );
 }

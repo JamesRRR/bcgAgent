@@ -2,7 +2,6 @@
   "nav": {
     "library": "桌游架",
     "import": "导入",
-    "walkthrough": "新手向导",
     "ask": "问规则",
     "settings": "设置",
     "handbook": "规则书"
@@ -56,7 +55,8 @@
     "generate": "生成向导",
     "regenerate": "重新生成",
     "generating": "生成中",
-    "pickGame": "先选一本规则书"
+    "pickGame": "先选一本规则书",
+    "errorHint": "请先在「设置」里填写 MiniMax API Key，并确保规则书已成功导入（书架卡片显示页数 > 0）。"
   },
   "ask": {
     "title": "问规则",

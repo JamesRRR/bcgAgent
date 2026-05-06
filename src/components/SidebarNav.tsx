@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS: { key: Page; label: string }[] = [
   { key: "library", label: "nav.library" },
   { key: "import", label: "nav.import" },
-  { key: "walkthrough", label: "nav.walkthrough" },
   { key: "ask", label: "nav.ask" },
   { key: "settings", label: "nav.settings" },
 ];

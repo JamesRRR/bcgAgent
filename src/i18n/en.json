@@ -2,7 +2,6 @@
   "nav": {
     "library": "Shelf",
     "import": "Import",
-    "walkthrough": "Beginner Mode",
     "ask": "Ask",
     "settings": "Settings",
     "handbook": "Handbook"
@@ -51,12 +50,13 @@
     "illustrations": "Illustrations"
   },
   "walkthrough": {
-    "title": "Walkthrough",
+    "title": "Beginner Mode",
     "intro": "Generate a beginner-friendly walkthrough: goal, setup, turn flow, key rules, and tips.",
     "generate": "Generate",
     "regenerate": "Regenerate",
     "generating": "Generating",
-    "pickGame": "Pick a rulebook first"
+    "pickGame": "Pick a rulebook first",
+    "errorHint": "Please set your MiniMax API key in Settings, and make sure the rulebook is imported (page count > 0 on the card)."
   },
   "ask": {
     "title": "Ask the Rules",

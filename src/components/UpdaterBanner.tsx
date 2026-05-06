@@ -12,9 +12,25 @@ export default function UpdaterBanner() {
     return () => clearTimeout(t);
   }, []);
 
+  // Listen for a "user clicked check-for-updates in Settings" custom event so
+  // we can re-trigger the check on demand without remounting the component.
+  useEffect(() => {
+    const handler = () => {
+      setDismissed(false);
+      checkForUpdate(setState);
+    };
+    window.addEventListener("bcg:check-for-update", handler);
+    return () => window.removeEventListener("bcg:check-for-update", handler);
+  }, []);
+
   if (dismissed) return null;
-  if (state.status === "idle" || state.status === "checking" || state.status === "uptodate") return null;
-  if (state.status === "error") return null;
+  if (
+    state.status === "idle" ||
+    state.status === "checking" ||
+    state.status === "uptodate"
+  ) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm rounded-lg border border-zinc-200 bg-white p-4 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
@@ -59,6 +75,28 @@ export default function UpdaterBanner() {
       )}
       {state.status === "ready" && (
         <div className="text-sm font-medium">更新就绪 — 重启中…</div>
+      )}
+      {state.status === "error" && (
+        <>
+          <div className="text-sm font-medium text-rose-700">检查更新失败</div>
+          <div className="mt-1 text-xs text-rose-600/90 break-words max-h-24 overflow-auto">
+            {state.message}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => checkForUpdate(setState)}
+              className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+            >
+              重试
+            </button>
+            <button
+              onClick={() => setDismissed(true)}
+              className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              关闭
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
