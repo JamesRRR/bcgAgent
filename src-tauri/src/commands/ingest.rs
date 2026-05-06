@@ -335,11 +335,24 @@ pub async fn run_ingest(
         &sink,
         "ingest:done",
         &IngestDoneEvent {
-            game_id,
+            game_id: game_id.clone(),
             succeeded,
             failed,
         },
     );
+
+    // Pick a cover for the game (BGG → first-page thumbnail). Errors are
+    // swallowed: a missing cover never fails an import.
+    if succeeded > 0 {
+        let db = state.db.clone();
+        let game_id_for_cover = game_id.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = crate::cover::auto::auto_set_cover(&db, &game_id_for_cover).await {
+                tracing::warn!("auto_set_cover for {game_id_for_cover} failed: {e}");
+            }
+        });
+    }
+
     Ok(())
 }
 

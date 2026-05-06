@@ -26,6 +26,10 @@ pub const EMBED_DIM: usize = 1024;
 /// Embedding model used. See module docs for why this isn't BGE-M3.
 const MODEL: EmbeddingModel = EmbeddingModel::MultilingualE5Large;
 
+/// Approximate total bytes for the multilingual-e5-large model. Used only for
+/// the UI progress hint when fastembed doesn't expose a real progress callback.
+pub const MODEL_TOTAL_BYTES: u64 = 1_300_000_000;
+
 static MODEL_CELL: OnceCell<Mutex<TextEmbedding>> = OnceCell::new();
 
 fn model() -> AppResult<&'static Mutex<TextEmbedding>> {
@@ -46,6 +50,43 @@ fn model() -> AppResult<&'static Mutex<TextEmbedding>> {
 
     let _ = MODEL_CELL.set(Mutex::new(embedder));
     Ok(MODEL_CELL.get().expect("just set"))
+}
+
+/// Has the embedding model already finished initializing?
+pub fn is_ready() -> bool {
+    MODEL_CELL.get().is_some()
+}
+
+/// Sum the bytes currently on disk under the model cache dir. Cheap-ish; we
+/// poll this on a 2s tick during startup to give the UI a "still working"
+/// signal even though `fastembed` doesn't expose true progress callbacks.
+pub fn cache_size_bytes() -> u64 {
+    fn dir_size(p: &std::path::Path) -> u64 {
+        let mut total = 0u64;
+        let Ok(rd) = std::fs::read_dir(p) else {
+            return 0;
+        };
+        for entry in rd.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_file() {
+                if let Ok(md) = entry.metadata() {
+                    total = total.saturating_add(md.len());
+                }
+            } else if ft.is_dir() {
+                total = total.saturating_add(dir_size(&entry.path()));
+            }
+        }
+        total
+    }
+    dir_size(&paths::bge_m3_dir())
+}
+
+/// Block on full model initialization. Identical to the lazy path triggered
+/// by `embed_batch`, but exposed so the app can warm the cache during
+/// startup with the UI watching.
+pub fn warm_up() -> AppResult<()> {
+    model()?;
+    Ok(())
 }
 
 /// Output dimension (1024).

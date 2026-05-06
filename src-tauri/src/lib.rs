@@ -1,5 +1,7 @@
 use tracing_subscriber::EnvFilter;
 
+use error::AppResult;
+
 pub mod paths;
 pub mod error;
 pub mod events;
@@ -10,6 +12,7 @@ pub mod ocr;
 pub mod embed;
 pub mod llm;
 pub mod audio;
+pub mod cover;
 
 pub mod commands;
 
@@ -37,12 +40,72 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(state)
+        .setup(|app| {
+            // Pre-download the embedding model on launch and broadcast progress
+            // hints, so a slow first-run never looks like the app is frozen.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                use serde::Serialize;
+                use tauri::Emitter;
+                #[derive(Serialize, Clone)]
+                #[serde(rename_all = "snake_case")]
+                struct Status<'a> {
+                    phase: &'a str,
+                    bytes: u64,
+                    total: u64,
+                    message: Option<String>,
+                }
+                let emit = |phase: &str, bytes: u64, message: Option<String>| {
+                    let _ = handle.emit(
+                        "app:model_status",
+                        Status {
+                            phase,
+                            bytes,
+                            total: embed::MODEL_TOTAL_BYTES,
+                            message,
+                        },
+                    );
+                };
+
+                if embed::is_ready() {
+                    emit("ready", embed::cache_size_bytes(), None);
+                    return;
+                }
+                emit("downloading", embed::cache_size_bytes(), None);
+
+                // Fire off the download on a second thread so we can keep
+                // emitting heartbeat progress every 2s from this one.
+                let (tx, rx) = std::sync::mpsc::channel::<AppResult<()>>();
+                std::thread::spawn(move || {
+                    let _ = tx.send(embed::warm_up());
+                });
+                loop {
+                    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                        Ok(Ok(())) => {
+                            emit("ready", embed::cache_size_bytes(), None);
+                            return;
+                        }
+                        Ok(Err(e)) => {
+                            emit("error", embed::cache_size_bytes(), Some(format!("{e}")));
+                            return;
+                        }
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            emit("downloading", embed::cache_size_bytes(), None);
+                        }
+                        Err(_) => return,
+                    }
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             ping,
             commands::games::games_list,
             commands::games::game_create,
             commands::games::game_get,
             commands::games::game_set_cover,
+            commands::games::game_auto_set_cover,
+            commands::games::game_set_cover_from_file,
             commands::games::game_rename,
             commands::pages::pages_list_by_game,
             commands::pages::page_get,

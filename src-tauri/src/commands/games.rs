@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::cover;
 use crate::error::{AppError, AppResult};
 use crate::store::{games, Game};
 
@@ -46,6 +47,32 @@ pub async fn game_set_cover(
     tokio::task::spawn_blocking(move || games::set_cover(&db, &id, &cover_path))
         .await
         .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+}
+
+/// Run the auto-cover pipeline (BGG → first-page thumbnail). Idempotent:
+/// no-op if the game already has a `cover_path`. Errors are logged, not surfaced.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn game_auto_set_cover(
+    state: State<'_, AppState>,
+    game_id: String,
+) -> AppResult<()> {
+    let db = state.db.clone();
+    cover::auto::auto_set_cover(&db, &game_id).await
+}
+
+/// Replace the cover with a user-chosen image file. Returns the new on-disk path.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn game_set_cover_from_file(
+    state: State<'_, AppState>,
+    game_id: String,
+    src_path: String,
+) -> AppResult<String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        cover::auto::set_cover_from_file(&db, &game_id, &src_path)
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
 #[tauri::command(rename_all = "snake_case")]

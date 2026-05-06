@@ -74,6 +74,28 @@ export default function Library() {
     }
   };
 
+  const handleChangeCover = async (game: Game) => {
+    try {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({
+        multiple: false,
+        filters: [
+          { name: "image", extensions: ["jpg", "jpeg", "png", "webp"] },
+        ],
+      });
+      if (!selected || Array.isArray(selected)) return;
+      const newPath = await gamesIpc.setCoverFromFile(game.id, selected);
+      setGames((cur) =>
+        cur
+          ? cur.map((g) => (g.id === game.id ? { ...g, cover_path: newPath } : g))
+          : cur,
+      );
+      toaster.push(`${t("library.changeCover")} ✓`, "success");
+    } catch (e) {
+      toaster.push(String(e), "error");
+    }
+  };
+
   // Loading state
   if (games === null) {
     return (
@@ -129,6 +151,7 @@ export default function Library() {
             game={g}
             onClick={() => setPage("handbook", g.id)}
             onRename={() => setRenaming(g)}
+            onChangeCover={() => handleChangeCover(g)}
           />
         ))}
       </div>

@@ -70,6 +70,10 @@ export const games = {
   get: (id: string) => invoke<Game | null>("game_get", { id }),
   setCover: (id: string, cover_path: string) =>
     invoke<void>("game_set_cover", { id, cover_path }),
+  autoSetCover: (game_id: string) =>
+    invoke<void>("game_auto_set_cover", { game_id }),
+  setCoverFromFile: (game_id: string, src_path: string) =>
+    invoke<string>("game_set_cover_from_file", { game_id, src_path }),
   rename: (id: string, name_zh: string, name_en?: string) =>
     invoke<void>("game_rename", {
       id,

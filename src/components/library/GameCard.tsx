@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Pencil } from "lucide-react";
+import { ImageIcon, Pencil } from "lucide-react";
 import { inTauri } from "@/lib/transport";
 import type { Game } from "@/lib/ipc";
 
@@ -9,9 +9,10 @@ type Props = {
   game: Game;
   onClick: () => void;
   onRename?: () => void;
+  onChangeCover?: () => void;
 };
 
-export default function GameCard({ game, onClick, onRename }: Props) {
+export default function GameCard({ game, onClick, onRename, onChangeCover }: Props) {
   const { t, i18n } = useTranslation();
   const firstChar = game.name_zh.charAt(0) || "?";
   const pageLabel =
@@ -88,6 +89,21 @@ export default function GameCard({ game, onClick, onRename }: Props) {
           className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-paper/90 text-ink/60 border border-ink/10 shadow-sm hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent"
         >
           <Pencil className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {onChangeCover && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onChangeCover();
+          }}
+          aria-label={t("library.changeCover")}
+          title={t("library.changeCover")}
+          data-testid={`change-cover-${game.id}`}
+          className="absolute top-2 right-10 z-10 p-1.5 rounded-full bg-paper/90 text-ink/60 border border-ink/10 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent focus:opacity-100"
+        >
+          <ImageIcon className="w-3.5 h-3.5" />
         </button>
       )}
     </div>

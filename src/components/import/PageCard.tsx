@@ -1,4 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
+import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
   CheckCircle2,
@@ -34,11 +36,42 @@ function basename(p: string): string {
   return m ? m[0] : p;
 }
 
+function useElapsedSeconds(active: boolean): number {
+  const startRef = useRef<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      startRef.current = null;
+      setElapsed(0);
+      return;
+    }
+    startRef.current = Date.now();
+    const id = window.setInterval(() => {
+      if (startRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return elapsed;
+}
+
+function RunningBadge({ elapsed }: { elapsed: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-accent">
+      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+      {elapsed > 0 && <span className="tabular-nums">{elapsed}s</span>}
+    </span>
+  );
+}
+
 function StatusBadge({
   status,
+  elapsed,
   onRetry,
 }: {
   status: PageStatus;
+  elapsed: number;
   onRetry?: () => void;
 }) {
   switch (status.kind) {
@@ -49,11 +82,7 @@ function StatusBadge({
         </span>
       );
     case "running":
-      return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-accent">
-          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-        </span>
-      );
+      return <RunningBadge elapsed={elapsed} />;
     case "done":
       return (
         <span className="inline-flex items-center gap-1.5 text-xs text-accent">
@@ -86,6 +115,7 @@ export default function PageCard({
   onRemove,
   onRetry,
 }: Props) {
+  const { t } = useTranslation();
   const {
     attributes,
     listeners,
@@ -94,6 +124,8 @@ export default function PageCard({
     transition,
     isDragging,
   } = useSortable({ id: item.id, disabled });
+  const elapsed = useElapsedSeconds(item.status.kind === "running");
+  const showSlowHint = item.status.kind === "running" && elapsed >= 15;
 
   const style: React.CSSProperties = {
     transform: transform
@@ -114,8 +146,9 @@ export default function PageCard({
       style={style}
       data-testid="page-card"
       data-status={item.status.kind}
-      className="flex items-center gap-3 bg-paper border border-ink/10 rounded-md pl-1 pr-3 py-2 shadow-sm"
+      className="flex flex-col bg-paper border border-ink/10 rounded-md pl-1 pr-3 py-2 shadow-sm"
     >
+      <div className="flex items-center gap-3">
       <button
         type="button"
         {...attributes}
@@ -142,7 +175,7 @@ export default function PageCard({
         {basename(item.path)}
       </span>
 
-      <StatusBadge status={item.status} onRetry={onRetry} />
+      <StatusBadge status={item.status} elapsed={elapsed} onRetry={onRetry} />
 
       {onRemove && (
         <button
@@ -154,6 +187,14 @@ export default function PageCard({
         >
           <X className="w-4 h-4" />
         </button>
+      )}
+      </div>
+      {showSlowHint && (
+        <div className="ml-[4.25rem] mt-1 text-xs text-amber-700/80">
+          {elapsed >= 60
+            ? t("import.longWait")
+            : t("import.slowNetwork")}
+        </div>
       )}
     </div>
   );

@@ -2,6 +2,7 @@
   "nav": {
     "library": "桌游架",
     "import": "导入",
+    "walkthrough": "新手向导",
     "ask": "问规则",
     "settings": "设置",
     "handbook": "规则书"
@@ -11,6 +12,7 @@
     "empty": "桌游架空空如也，导入第一本规则书吧～",
     "addGame": "添加桌游",
     "rename": "重命名",
+    "changeCover": "更换封面",
     "renameDialog": {
       "title": "重命名桌游",
       "confirm": "保存"
@@ -30,6 +32,8 @@
     "dropzone": "拖入页面图片，或点击选择文件",
     "reorderHint": "拖动卡片以调整顺序",
     "startButton": "开始导入",
+    "slowNetwork": "网络较慢，请耐心等待",
+    "longWait": "若长时间无响应，可重试或检查网络",
     "progress": {
       "ocr": "正在识别文字…",
       "embed": "正在建立索引…",
@@ -47,9 +51,9 @@
     "illustrations": "插图"
   },
   "walkthrough": {
-    "title": "新手走查",
+    "title": "新手向导",
     "intro": "为完全没玩过的新手生成一份循序渐进的入门教程：游戏目标、准备、流程、关键规则与小贴士。",
-    "generate": "生成走查",
+    "generate": "生成向导",
     "regenerate": "重新生成",
     "generating": "生成中",
     "pickGame": "先选一本规则书"
@@ -93,5 +97,10 @@
     "cancel": "取消",
     "delete": "删除",
     "confirm": "确定"
+  },
+  "model": {
+    "preparing": "正在准备中文嵌入模型… {{bytes}} GB / {{total}} GB",
+    "ready": "模型已就绪",
+    "error": "模型准备失败"
   }
 }

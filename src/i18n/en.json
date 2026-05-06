@@ -2,6 +2,7 @@
   "nav": {
     "library": "Shelf",
     "import": "Import",
+    "walkthrough": "Beginner Mode",
     "ask": "Ask",
     "settings": "Settings",
     "handbook": "Handbook"
@@ -11,6 +12,7 @@
     "empty": "The shelf is empty — import your first rulebook!",
     "addGame": "Add Game",
     "rename": "Rename",
+    "changeCover": "Change cover",
     "renameDialog": {
       "title": "Rename Game",
       "confirm": "Save"
@@ -30,6 +32,8 @@
     "dropzone": "Drop page images here, or click to choose files",
     "reorderHint": "Drag cards to reorder pages",
     "startButton": "Start Import",
+    "slowNetwork": "Network is slow, please be patient",
+    "longWait": "Still waiting? You can retry or check your connection",
     "progress": {
       "ocr": "Recognizing text…",
       "embed": "Building index…",
@@ -93,5 +97,10 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "confirm": "Confirm"
+  },
+  "model": {
+    "preparing": "Preparing local embedding model… {{bytes}} GB / {{total}} GB",
+    "ready": "Model ready",
+    "error": "Model preparation failed"
   }
 }
