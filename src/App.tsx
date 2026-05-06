@@ -1,4 +1,5 @@
 import AppShell from "@/components/AppShell";
+import UpdaterBanner from "@/components/UpdaterBanner";
 import { useApp } from "@/state";
 import Library from "@/pages/Library";
 import Import from "@/pages/Import";
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <AppShell>
       <PageSwitch />
+      <UpdaterBanner />
     </AppShell>
   );
 }

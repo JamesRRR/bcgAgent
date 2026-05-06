@@ -93,8 +93,40 @@ cargo test --test voice_roundtrip -- --ignored --nocapture      # 真实 STT/TTS
 
 ## 构建分发
 
+### 本地构建（开发用）
+
 ```bash
 pnpm tauri:build        # 注意冒号 — 会自动打 Info.plist 麦克风权限并重打包 DMG
 ```
 
 产物：`src-tauri/target/release/bundle/dmg/攀达桌游_0.1.0_aarch64.dmg`
+
+### 正式发布（GitHub Releases + 自动更新）
+
+发布走 GitHub Action：tag 触发，CI 在 macOS 上构建 ARM + Intel 双架构 .dmg、Apple notarize、签名、上传到 Releases，并写入 `latest.json`。已安装的客户端启动时自动检测并升级。
+
+```bash
+# 1. 改 src-tauri/tauri.conf.json 和 src-tauri/Cargo.toml 里的 version
+# 2. 改 package.json 的 version
+# 3. 提交后打 tag：
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+GitHub Action：`.github/workflows/release.yml`
+
+#### 一次性配置
+
+依赖 `~/.config/dev-secrets/` 下的：
+
+- `apple.env` — Apple Developer 凭证（Team ID, Apple ID, app-specific password, 签名身份, p12 密码）
+- `apple-certs/developer-id.p12` — "Developer ID Application" 证书
+- `tauri-updater/bcgAgent/` — 更新签名密钥对（已生成）
+
+把这些同步到 GitHub Secrets：
+
+```bash
+~/.config/dev-secrets/sync-to-github.sh JamesRRR/bcgAgent bcgAgent
+```
+
+更新 UI 在 `src/components/UpdaterBanner.tsx`，调用 `src/lib/updater.ts`。
