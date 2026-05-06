@@ -11,16 +11,7 @@ permissions:
 
 jobs:
   release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-14
-          - target: x86_64-apple-darwin
-            runner: macos-13
-
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +24,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -62,8 +53,8 @@ jobs:
             See commits since previous tag.
 
             ---
-            **Install:** download the `.dmg` for your Mac (Apple Silicon = `aarch64`, Intel = `x64`), open and drag to Applications.
+            **Install:** Apple Silicon Mac required (M1+). Download the `.dmg`, open and drag to Applications.
             **Existing users:** the app will auto-update on next launch.
           releaseDraft: false
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: --target aarch64-apple-darwin
