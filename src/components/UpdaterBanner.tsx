@@ -60,15 +60,16 @@ export default function UpdaterBanner() {
       )}
       {state.status === "downloading" && (
         <>
-          <div className="text-sm font-medium">下载更新 v{state.version}</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-sm font-medium">下载更新 v{state.version}</div>
+            <div className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+              {state.pct}%
+            </div>
+          </div>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded bg-zinc-200 dark:bg-zinc-800">
             <div
-              className="h-full bg-zinc-900 transition-all dark:bg-white"
-              style={{
-                width: state.total
-                  ? `${Math.min(100, (state.downloaded / state.total) * 100)}%`
-                  : "30%",
-              }}
+              className="h-full bg-zinc-900 transition-[width] duration-500 ease-out dark:bg-white"
+              style={{ width: `${state.pct}%` }}
             />
           </div>
         </>
