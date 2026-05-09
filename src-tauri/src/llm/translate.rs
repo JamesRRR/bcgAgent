@@ -115,6 +115,40 @@ pub async fn translate_to_chinese(req: TranslateRequest<'_>) -> AppResult<String
     translate_to_chinese_with(req, default_chat_fn()).await
 }
 
+/// Translate a short query to English for connectors that search English
+/// content (BGG forums, Brave web search). Skips the network when the input
+/// is already mostly Latin (`!looks_like_chinese`). Domain hint is included
+/// to keep board-game terms intact.
+pub async fn translate_query_to_english(query: &str) -> AppResult<String> {
+    translate_query_to_english_with(query, default_chat_fn()).await
+}
+
+pub async fn translate_query_to_english_with(query: &str, chat_fn: ChatFn) -> AppResult<String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(String::new());
+    }
+    if !looks_like_chinese(q) {
+        return Ok(q.to_string());
+    }
+    let messages = vec![
+        Message {
+            role: "system".into(),
+            content: "Translate the following Chinese board-game-related query to a concise English search query. Preserve game-specific proper nouns. Output only the translation, no quotes, no commentary.".into(),
+        },
+        Message {
+            role: "user".into(),
+            content: q.to_string(),
+        },
+    ];
+    let opts = ChatOptions {
+        temperature: 0.2,
+        max_tokens: 128,
+    };
+    let result = (chat_fn)(messages, opts).await?;
+    Ok(result.trim().trim_matches('"').to_string())
+}
+
 /// Test-friendly variant — accepts an injected `ChatFn` so unit tests can
 /// short-circuit the HTTP call.
 pub async fn translate_to_chinese_with(
@@ -218,6 +252,28 @@ mod tests {
         };
         let out = translate_to_chinese_with(req, chat).await.unwrap();
         assert!(out.contains("骑士"));
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn english_query_passthrough_no_network() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let chat = canned_chat("nope", count.clone());
+        let out = translate_query_to_english_with("how does the robber work", chat)
+            .await
+            .unwrap();
+        assert_eq!(out, "how does the robber work");
+        assert_eq!(count.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn chinese_query_routes_to_english() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let chat = canned_chat("how does the robber work", count.clone());
+        let out = translate_query_to_english_with("强盗如何使用", chat)
+            .await
+            .unwrap();
+        assert_eq!(out, "how does the robber work");
         assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 

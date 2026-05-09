@@ -153,11 +153,25 @@ pub async fn run_research(
 
     let mut timed_out = false;
 
-    // 2. Fan-out connector search. Each connector runs concurrently with its
+    // 2a. Translate the query to English for connectors that search English
+    // content (BGG forums, web search). Skipped (no-op) when the query is
+    // already English. Failures fall back to the original query.
+    let query_en: String = match crate::llm::translate::translate_query_to_english(&plan.query).await {
+        Ok(s) if !s.is_empty() => s,
+        _ => plan.query.clone(),
+    };
+
+    // 2b. Fan-out connector search. Each connector runs concurrently with its
     // own slice of the deadline.
     let connector_search_futs = deps.connectors.iter().map(|c| {
         let conn = Arc::clone(c);
-        let q = plan.query.clone();
+        // BGG and Brave search match against English content; the other
+        // connectors (none today, but future ones may target zh) get the
+        // original query untouched.
+        let q = match conn.id() {
+            "bgg_forum" | "web_search" => query_en.clone(),
+            _ => plan.query.clone(),
+        };
         let game_id = ctx.game_id.to_string();
         let bgg_id = ctx.bgg_id;
         let name_zh = ctx.name_zh.to_string();
