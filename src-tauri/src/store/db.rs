@@ -61,10 +61,40 @@ impl Db {
             let _ = conn.execute(sql, []);
         }
         ensure_external_refs_table(&conn)?;
+        super::migrations_wave1::ensure_schema(&conn)?;
         retokenize_fts_if_outdated(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
+    }
+
+    /// Whether the Wave 1 backfill is pending data (i.e. would actually
+    /// mutate rows) on this open DB. The caller (startup) checks this
+    /// before deciding to take a backup of the user's `db.sqlite`.
+    pub fn wave1_backfill_pending(&self) -> AppResult<bool> {
+        let conn = self.lock();
+        super::migrations_wave1::backfill_will_run(&conn)
+    }
+
+    /// Snapshot the on-disk DB file to
+    /// `~/Library/Application Support/bcgAgent/db.sqlite.bak.{unix_ts}`.
+    /// Plain file copy — the caller is expected to take this BEFORE any
+    /// data-mutating migration runs, while the DB is still untouched. The
+    /// `rusqlite::backup` feature isn't enabled, but a file copy is safe
+    /// here because the only writer (this process) hasn't issued any
+    /// writes yet on the user's `db.sqlite` for this startup.
+    /// Returns `None` for non-disk DBs (tests use in-memory).
+    pub fn backup_to_file(&self) -> AppResult<Option<std::path::PathBuf>> {
+        let src = paths::db_path();
+        if !src.exists() {
+            return Ok(None);
+        }
+        let dst = paths::app_data_dir().join(format!(
+            "db.sqlite.bak.{}",
+            time::OffsetDateTime::now_utc().unix_timestamp()
+        ));
+        std::fs::copy(&src, &dst)?;
+        Ok(Some(dst))
     }
 
     /// Acquire the connection lock. All other modules call this per-operation.

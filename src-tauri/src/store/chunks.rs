@@ -6,6 +6,37 @@ use super::jieba;
 use super::models::Chunk;
 use crate::error::AppResult;
 
+/// Provenance metadata attached to every chunk. See the design spec
+/// "Provenance spine" section for the full vocabulary. Defaults match
+/// the legacy photo-OCR flow: `photo_ocr` / `publisher` / official.
+#[derive(Debug, Clone)]
+pub struct ChunkProvenance<'a> {
+    pub source_kind: &'a str,
+    pub source_url: Option<&'a str>,
+    pub trust_tier: &'a str,
+    pub official: bool,
+    pub confidence: f64,
+    pub fetched_at: Option<i64>,
+    pub content_lang: &'a str,
+    pub content_orig: Option<&'a str>,
+}
+
+impl<'a> ChunkProvenance<'a> {
+    /// The default (legacy) provenance — what photo-OCR ingest produces.
+    pub fn photo_ocr() -> Self {
+        Self {
+            source_kind: "photo_ocr",
+            source_url: None,
+            trust_tier: "publisher",
+            official: true,
+            confidence: 1.0,
+            fetched_at: None,
+            content_lang: "zh",
+            content_orig: None,
+        }
+    }
+}
+
 /// Convert a jieba-cut query string into an FTS5 OR expression like
 /// `"羁绊" OR "什么"`. Each term is wrapped in double quotes so FTS5 treats
 /// it as a phrase literal — that way punctuation, hyphens, or any character
@@ -23,6 +54,10 @@ fn build_or_match_expr(tokenized: &str) -> String {
 
 /// Insert a chunk, its 1024-d embedding, and its jieba-tokenized FTS row.
 /// All three rows share the same `rowid` so we can join by it later.
+///
+/// Legacy entry point — uses default photo-OCR provenance so existing call
+/// sites keep their behavior. New code should call
+/// `insert_chunk_with_embedding_and_provenance` directly.
 pub fn insert_chunk_with_embedding(
     db: &Db,
     page_id: &str,
@@ -32,11 +67,53 @@ pub fn insert_chunk_with_embedding(
     token_count: i64,
     embedding: &[f32],
 ) -> AppResult<i64> {
+    insert_chunk_with_embedding_and_provenance(
+        db,
+        page_id,
+        game_id,
+        heading_path,
+        content,
+        token_count,
+        embedding,
+        &ChunkProvenance::photo_ocr(),
+    )
+}
+
+/// Same as `insert_chunk_with_embedding`, but also writes the provenance
+/// columns added in Wave 1. Holds the connection lock for all three writes
+/// so a half-inserted chunk can't be observed.
+pub fn insert_chunk_with_embedding_and_provenance(
+    db: &Db,
+    page_id: &str,
+    game_id: &str,
+    heading_path: Option<&str>,
+    content: &str,
+    token_count: i64,
+    embedding: &[f32],
+    prov: &ChunkProvenance<'_>,
+) -> AppResult<i64> {
     let conn = db.lock();
     conn.execute(
-        "INSERT INTO chunks (page_id, game_id, heading_path, content, token_count) \
-         VALUES (?, ?, ?, ?, ?)",
-        params![page_id, game_id, heading_path, content, token_count],
+        "INSERT INTO chunks \
+            (page_id, game_id, heading_path, content, token_count, \
+             source_kind, source_url, trust_tier, official, confidence, \
+             fetched_at, content_lang, content_orig) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            page_id,
+            game_id,
+            heading_path,
+            content,
+            token_count,
+            prov.source_kind,
+            prov.source_url,
+            prov.trust_tier,
+            if prov.official { 1i64 } else { 0i64 },
+            prov.confidence,
+            prov.fetched_at,
+            prov.content_lang,
+            prov.content_orig,
+        ],
     )?;
     let chunk_id = conn.last_insert_rowid();
 
@@ -53,6 +130,36 @@ pub fn insert_chunk_with_embedding(
     )?;
 
     Ok(chunk_id)
+}
+
+/// Group `chunks` by `source_kind` for one game. Returned as `(kind, count)`
+/// rows ordered by descending count then ascending kind for stable diffs.
+/// Used by the Wave 5 KB-diff harness; safe to call at any time.
+pub fn count_chunks_by_source_kind(db: &Db, game_id: &str) -> AppResult<Vec<(String, u64)>> {
+    let conn = db.lock();
+    let mut stmt = conn.prepare(
+        "SELECT source_kind, COUNT(*) as n FROM chunks WHERE game_id = ? \
+         GROUP BY source_kind ORDER BY n DESC, source_kind ASC",
+    )?;
+    let rows = stmt
+        .query_map(params![game_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Update the user-endorsement flag on a chunk. `None` clears the flag,
+/// `Some(true)` thumbs-up, `Some(false)` thumbs-down. The retrieval layer
+/// reads this column; we don't recompute embeddings here.
+pub fn update_chunk_endorsed(db: &Db, chunk_id: i64, endorsed: Option<bool>) -> AppResult<()> {
+    let conn = db.lock();
+    let val: Option<i64> = endorsed.map(|b| if b { 1 } else { 0 });
+    conn.execute(
+        "UPDATE chunks SET endorsed = ? WHERE id = ?",
+        params![val, chunk_id],
+    )?;
+    Ok(())
 }
 
 pub fn get_chunk(db: &Db, id: i64) -> AppResult<Option<Chunk>> {
