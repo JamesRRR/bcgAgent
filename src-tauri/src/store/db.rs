@@ -46,6 +46,15 @@ impl Db {
         Self::init(conn)
     }
 
+    /// Open a SQLite file at an explicit path (no app-data-dir layout
+    /// assumptions). Used by the Wave 5 E2E harness to operate on a copy
+    /// of the user's DB without mutating the original.
+    pub fn open_at_path(path: &std::path::Path) -> AppResult<Self> {
+        register_vec_extension();
+        let conn = Connection::open(path)?;
+        Self::init(conn)
+    }
+
     fn init(conn: Connection) -> AppResult<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(MIGRATIONS)?;
@@ -100,6 +109,19 @@ impl Db {
     /// Acquire the connection lock. All other modules call this per-operation.
     pub(crate) fn lock(&self) -> parking_lot::MutexGuard<'_, Connection> {
         self.conn.lock()
+    }
+
+    /// Run an arbitrary read-only closure under the connection lock. Exposed
+    /// for the Wave 5 KB-diff harness (`examples/kb_e2e.rs`) which needs to
+    /// run ad-hoc SELECTs that don't fit the pre-defined helpers. The
+    /// caller must not mutate; we don't try to enforce that at the type
+    /// level because rusqlite has no read-only `Connection` view.
+    pub fn with_conn<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce(&Connection) -> T,
+    {
+        let guard = self.conn.lock();
+        f(&guard)
     }
 }
 

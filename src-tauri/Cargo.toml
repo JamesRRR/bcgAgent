@@ -91,3 +91,10 @@ path = "src/main.rs"
 name = "test-server"
 path = "examples/test-server.rs"
 required-features = ["test-server"]
+
+# Wave 5 KB-research E2E harness. Operates on a copy of the user's DB and
+# exercises extractors + research orchestrator end-to-end. See
+# `examples/kb_e2e.rs` for usage.
+[[example]]
+name = "kb_e2e"
+path = "examples/kb_e2e.rs"
