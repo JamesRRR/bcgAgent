@@ -3,4 +3,6 @@
 //! `game_external_refs` so RAG and the walkthrough coach have it.
 
 pub mod bgg_extra;
+pub mod connectors;
+pub mod orchestrator;
 pub mod pipeline;

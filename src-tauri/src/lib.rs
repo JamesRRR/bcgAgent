@@ -137,6 +137,7 @@ pub fn run() {
             commands::import_external::bgg_search,
             commands::import_external::import_from_bgg,
             commands::research::research_run,
+            commands::research::cmd_explicit_research,
             commands::ask::ask,
             commands::walkthrough::walkthrough_run,
             commands::walkthrough::walkthrough_get_cached,

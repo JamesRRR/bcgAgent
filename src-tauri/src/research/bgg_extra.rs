@@ -410,6 +410,16 @@ fn parse_gallery_json(body: &str) -> Vec<GalleryImage> {
     out
 }
 
+/// Test-only wrappers so cross-module tests (e.g. the bgg_forum connector
+/// unit test) can drive the same parsers without going through HTTP.
+#[cfg(test)]
+pub(crate) mod test_helpers {
+    use super::*;
+    pub(crate) fn parse_threadlist(xml: &str) -> Vec<ThreadSummary> {
+        super::parse_threadlist(xml)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
