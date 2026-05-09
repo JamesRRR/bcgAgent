@@ -32,7 +32,26 @@ pub fn run() {
         .init();
 
     paths::ensure_layout().expect("create app data layout");
+
+    // Wave 4: snapshot the user's `db.sqlite` BEFORE running the Wave 1
+    // backfill (which mutates rows). The check happens after Db::open() so
+    // schema migrations have already run, but the additive ALTERs don't
+    // change row data — only the backfill does. We probe the pending flag
+    // before kicking off any data-touching pass.
+    //
+    // Best-effort: a backup failure is logged and ignored so a stuck
+    // filesystem doesn't brick first launch.
     let db = store::Db::open().expect("open sqlite db");
+    match db.wave1_backfill_pending() {
+        Ok(true) => match db.backup_to_file() {
+            Ok(Some(path)) => tracing::info!("Wave 1 backup saved: {}", path.display()),
+            Ok(None) => tracing::info!("Wave 1 backup skipped: db file does not exist yet"),
+            Err(e) => tracing::warn!("Wave 1 backup failed (continuing): {e}"),
+        },
+        Ok(false) => {}
+        Err(e) => tracing::warn!("Wave 1 backfill probe failed (continuing): {e}"),
+    }
+
     audio::tts::bootstrap_from_dev_secrets(&db);
     let state = commands::AppState::new(db);
 
@@ -140,6 +159,8 @@ pub fn run() {
             commands::research::research_run,
             commands::research::cmd_explicit_research,
             commands::research::cmd_run_extractors,
+            commands::research::cmd_endorse_chunk,
+            commands::research::cmd_kb_diff,
             commands::ask::ask,
             commands::walkthrough::walkthrough_run,
             commands::walkthrough::walkthrough_get_cached,

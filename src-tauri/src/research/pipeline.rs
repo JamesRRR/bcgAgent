@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use crate::cover::bgg;
 use crate::error::AppResult;
+use crate::events::{self, EventSink};
 use crate::extractors;
 use crate::research::bgg_extra;
 use crate::research::connectors::GameCtx;
@@ -422,7 +423,21 @@ async fn caption_illustrations(db: &Db, game_id: &str) -> AppResult<(usize, usiz
 
 /// Run the full research pass. Failures inside any step are logged and the
 /// pipeline continues — partial knowledge is better than none.
+///
+/// `sink`, when supplied, is forwarded into `run_seed_crawl` so the UI banner
+/// can react to `seed_crawl:done` (Wave 4).
 pub async fn run_for_game(db: &Db, game_id: &str) -> AppResult<ResearchSummary> {
+    run_for_game_with_sink(db, game_id, None).await
+}
+
+/// Same as `run_for_game` but with an event sink so the seed-crawl emit can
+/// reach the frontend. Existing callers that don't care about the seed banner
+/// keep using the no-sink form above.
+pub async fn run_for_game_with_sink(
+    db: &Db,
+    game_id: &str,
+    sink: Option<EventSink>,
+) -> AppResult<ResearchSummary> {
     let mut s = ResearchSummary::default();
 
     let bgg_id = match ensure_bgg_id(db, game_id).await {
@@ -482,7 +497,7 @@ pub async fn run_for_game(db: &Db, game_id: &str) -> AppResult<ResearchSummary> 
     // Wave 3 — final additive step: lazy seed crawl + structured extractors.
     // Failures here NEVER fail the import. The user has already seen
     // `ingest:done`; this work is bonus context.
-    if let Err(e) = run_seed_crawl(db, game_id).await {
+    if let Err(e) = run_seed_crawl(db, game_id, sink.clone()).await {
         tracing::warn!("research: seed crawl failed: {e}");
     }
 
@@ -492,7 +507,14 @@ pub async fn run_for_game(db: &Db, game_id: &str) -> AppResult<ResearchSummary> 
 /// Wave 3 seed crawl + extractor sweep. Runs two short research events
 /// (`{name} setup` + `{name} rules clarifications`), then fans out the three
 /// structured extractors in parallel. All errors are logged and swallowed.
-pub async fn run_seed_crawl(db: &Db, game_id: &str) -> AppResult<()> {
+///
+/// If `sink` is `Some`, emits `seed_crawl:done` with `{ game_id, chunks_added }`
+/// when finished — used by the UI's seed-crawl banner (Wave 4).
+pub async fn run_seed_crawl(
+    db: &Db,
+    game_id: &str,
+    sink: Option<EventSink>,
+) -> AppResult<()> {
     // Resolve game context once.
     let game = {
         let db = db.clone();
@@ -590,6 +612,16 @@ pub async fn run_seed_crawl(db: &Db, game_id: &str) -> AppResult<()> {
         setup.created,
         total_chunks
     );
+    if let Some(s) = sink.as_ref() {
+        events::emit(
+            s,
+            "seed_crawl:done",
+            &serde_json::json!({
+                "game_id": game_id,
+                "chunks_added": total_chunks,
+            }),
+        );
+    }
     Ok(())
 }
 

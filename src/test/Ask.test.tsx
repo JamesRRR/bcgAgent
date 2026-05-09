@@ -42,6 +42,22 @@ vi.mock("@/lib/ipc", () => {
       onCitations: vi.fn((cb: Callback) => subscribe("citations")(cb)),
       onToken: vi.fn((cb: Callback) => subscribe("token")(cb)),
       onDone: vi.fn((cb: Callback) => subscribe("done")(cb)),
+      onResearchStarted: vi.fn(() => Promise.resolve(() => {})),
+      onResearchDone: vi.fn(() => Promise.resolve(() => {})),
+    },
+    research: {
+      explicit: vi.fn(() =>
+        Promise.resolve({
+          event_id: 1,
+          chunks_added: 0,
+          urls_fetched: [],
+          timed_out: false,
+        }),
+      ),
+      endorseChunk: vi.fn(() => Promise.resolve()),
+      runExtractors: vi.fn(),
+      kbDiff: vi.fn(),
+      onSeedCrawlDone: vi.fn(() => Promise.resolve(() => {})),
     },
     audio: {
       transcribe: vi.fn(),

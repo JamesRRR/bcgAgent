@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Moon, RefreshCw, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToaster } from "@/components/Toaster";
-import { settings } from "@/lib/ipc";
+import { KB_KEYS, settings } from "@/lib/ipc";
 import SecretField from "@/components/settings/SecretField";
 import Section from "@/components/settings/Section";
 import { getVersion } from "@tauri-apps/api/app";
@@ -29,7 +29,17 @@ export default function Settings() {
     initial: "",
     current: "",
   });
+  const [brave, setBrave] = useState<SecretState>({
+    initial: "",
+    current: "",
+  });
   const [savingKeys, setSavingKeys] = useState(false);
+
+  // Wave 4 KB toggles — saved on change so there's no separate Save button.
+  const [autoResearch, setAutoResearch] = useState<boolean>(true);
+  const [includeUnofficial, setIncludeUnofficial] = useState<boolean>(true);
+  const [confThreshold, setConfThreshold] = useState<number>(0.45);
+  const [dailyCap, setDailyCap] = useState<number>(20);
 
   const [ttsLang, setTtsLang] = useState<"zh" | "en">("zh");
   const [retrievalK, setRetrievalK] = useState<number>(8);
@@ -59,27 +69,62 @@ export default function Settings() {
       settings.getSecret("elevenlabs"),
       settings.get(TTS_PROVIDER_KEY),
       settings.get(TTS_EL_VOICE_ID_KEY),
+      settings.getSecret("brave"),
+      settings.get(KB_KEYS.AUTO_RESEARCH),
+      settings.get(KB_KEYS.INCLUDE_UNOFFICIAL),
+      settings.get(KB_KEYS.CONFIDENCE_THRESHOLD),
+      settings.get(KB_KEYS.RESEARCH_DAILY_CAP),
     ])
-      .then(([ds, mm, lang, k, el, prov, vid]) => {
-        if (cancelled) return;
-        const dsVal = ds ?? "";
-        const mmVal = mm ?? "";
-        setDashscope({ initial: dsVal, current: dsVal });
-        setMinimax({ initial: mmVal, current: mmVal });
-        if (lang === "zh" || lang === "en") setTtsLang(lang);
-        if (k) {
-          const n = parseInt(k, 10);
-          if (!Number.isNaN(n) && n >= 4 && n <= 16) setRetrievalK(n);
-        }
-        const elVal = el ?? "";
-        setElevenKey({ initial: elVal, current: elVal });
-        const vidVal = vid ?? "";
-        setElevenVoiceId(vidVal);
-        setElevenVoiceIdInitial(vidVal);
-        const provNorm: ProviderMode =
-          prov === "elevenlabs" || prov === "system" ? prov : "";
-        setProviderMode(provNorm);
-      })
+      .then(
+        ([
+          ds,
+          mm,
+          lang,
+          k,
+          el,
+          prov,
+          vid,
+          br,
+          autoR,
+          incUn,
+          conf,
+          cap,
+        ]) => {
+          if (cancelled) return;
+          const dsVal = ds ?? "";
+          const mmVal = mm ?? "";
+          setDashscope({ initial: dsVal, current: dsVal });
+          setMinimax({ initial: mmVal, current: mmVal });
+          if (lang === "zh" || lang === "en") setTtsLang(lang);
+          if (k) {
+            const n = parseInt(k, 10);
+            if (!Number.isNaN(n) && n >= 4 && n <= 16) setRetrievalK(n);
+          }
+          const elVal = el ?? "";
+          setElevenKey({ initial: elVal, current: elVal });
+          const vidVal = vid ?? "";
+          setElevenVoiceId(vidVal);
+          setElevenVoiceIdInitial(vidVal);
+          const provNorm: ProviderMode =
+            prov === "elevenlabs" || prov === "system" ? prov : "";
+          setProviderMode(provNorm);
+
+          // Wave 4 KB settings.
+          const brVal = br ?? "";
+          setBrave({ initial: brVal, current: brVal });
+          if (autoR != null) setAutoResearch(autoR === "true" || autoR === "1");
+          if (incUn != null)
+            setIncludeUnofficial(incUn === "true" || incUn === "1");
+          if (conf != null) {
+            const n = parseFloat(conf);
+            if (!Number.isNaN(n)) setConfThreshold(Math.min(1, Math.max(0, n)));
+          }
+          if (cap != null) {
+            const n = parseInt(cap, 10);
+            if (!Number.isNaN(n) && n >= 1 && n <= 200) setDailyCap(n);
+          }
+        },
+      )
       .catch((e) => toaster.push(String(e), "error"));
     return () => {
       cancelled = true;
@@ -90,7 +135,8 @@ export default function Settings() {
   const mmDirty = minimax.current !== minimax.initial;
   const elDirty = elevenKey.current !== elevenKey.initial;
   const elVidDirty = elevenVoiceId !== elevenVoiceIdInitial;
-  const keysDirty = dsDirty || mmDirty || elDirty || elVidDirty;
+  const brDirty = brave.current !== brave.initial;
+  const keysDirty = dsDirty || mmDirty || elDirty || elVidDirty || brDirty;
 
   const handleSaveKeys = async () => {
     setSavingKeys(true);
@@ -103,16 +149,27 @@ export default function Settings() {
         ops.push(settings.setSecret("elevenlabs", elevenKey.current));
       if (elVidDirty)
         ops.push(settings.set(TTS_EL_VOICE_ID_KEY, elevenVoiceId));
+      if (brDirty) ops.push(settings.setSecret("brave", brave.current));
       await Promise.all(ops);
       setDashscope((s) => ({ initial: s.current, current: s.current }));
       setMinimax((s) => ({ initial: s.current, current: s.current }));
       setElevenKey((s) => ({ initial: s.current, current: s.current }));
+      setBrave((s) => ({ initial: s.current, current: s.current }));
       setElevenVoiceIdInitial(elevenVoiceId);
       toaster.push(isZh ? "已保存" : "Saved", "success");
     } catch (e) {
       toaster.push(String(e), "error");
     } finally {
       setSavingKeys(false);
+    }
+  };
+
+  // Wave 4 KB persistance — bound to onChange/onBlur (no Save button).
+  const persistKb = async (key: string, value: string) => {
+    try {
+      await settings.set(key, value);
+    } catch (e) {
+      toaster.push(String(e), "error");
     }
   };
 
@@ -184,6 +241,89 @@ export default function Settings() {
   return (
     <section className="max-w-2xl mx-auto py-12 px-8 space-y-10 bg-cream dark:bg-[var(--bg)] text-ink dark:text-cream min-h-screen">
       <h1 className="text-3xl font-semibold">{t("settings.title")}</h1>
+
+      <Section title={t("settings.kb.label")}>
+        <SecretField
+          label={t("settings.kb.braveKey")}
+          value={brave.current}
+          saved={!!brave.initial && !brDirty}
+          dirty={brDirty}
+          onChange={(v) => setBrave((s) => ({ ...s, current: v }))}
+          helperText={emptyHelp}
+          savedLabel={savedLabel}
+          unsavedLabel={unsavedLabel}
+        />
+        <label className="flex items-center justify-between py-2 text-sm">
+          <span>{t("settings.kb.autoResearch")}</span>
+          <input
+            type="checkbox"
+            checked={autoResearch}
+            onChange={(e) => {
+              setAutoResearch(e.target.checked);
+              persistKb(KB_KEYS.AUTO_RESEARCH, e.target.checked ? "true" : "false");
+            }}
+            className="accent-accent"
+          />
+        </label>
+        <label className="flex items-center justify-between py-2 text-sm">
+          <span>{t("settings.kb.includeUnofficial")}</span>
+          <input
+            type="checkbox"
+            checked={includeUnofficial}
+            onChange={(e) => {
+              setIncludeUnofficial(e.target.checked);
+              persistKb(
+                KB_KEYS.INCLUDE_UNOFFICIAL,
+                e.target.checked ? "true" : "false",
+              );
+            }}
+            className="accent-accent"
+          />
+        </label>
+        <div className="flex flex-col gap-1.5 py-2">
+          <label className="text-sm text-ink/70 dark:text-cream/70">
+            {t("settings.kb.dailyCap")}
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={200}
+            step={1}
+            value={dailyCap}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              if (!Number.isNaN(n)) setDailyCap(n);
+            }}
+            onBlur={() => {
+              const clamped = Math.min(200, Math.max(1, dailyCap));
+              setDailyCap(clamped);
+              persistKb(KB_KEYS.RESEARCH_DAILY_CAP, String(clamped));
+            }}
+            className="w-32 rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent dark:bg-[var(--paper)] dark:text-cream dark:border-cream/15"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 py-2">
+          <label className="text-sm text-ink/70 dark:text-cream/70">
+            {t("settings.kb.confThreshold")}{" "}
+            <span className="text-ink/40">{confThreshold.toFixed(2)}</span>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={confThreshold}
+            onChange={(e) => setConfThreshold(parseFloat(e.target.value))}
+            onMouseUp={() =>
+              persistKb(KB_KEYS.CONFIDENCE_THRESHOLD, String(confThreshold))
+            }
+            onTouchEnd={() =>
+              persistKb(KB_KEYS.CONFIDENCE_THRESHOLD, String(confThreshold))
+            }
+            className="accent-accent"
+          />
+        </div>
+      </Section>
 
       <Section title={isZh ? "API 密钥" : "API Keys"}>
         <SecretField

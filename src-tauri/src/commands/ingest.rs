@@ -352,7 +352,13 @@ pub async fn run_ingest(
                 "research:started",
                 &serde_json::json!({"game_id": game_id_bg}),
             );
-            match crate::research::pipeline::run_for_game(&db, &game_id_bg).await {
+            match crate::research::pipeline::run_for_game_with_sink(
+                &db,
+                &game_id_bg,
+                Some(sink_bg.clone()),
+            )
+            .await
+            {
                 Ok(summary) => {
                     sink_emit(
                         &sink_bg,

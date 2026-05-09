@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ingest } from "@/lib/ipc";
+import { ingest, research as researchIpc } from "@/lib/ipc";
 import type { PageItem, PageStatus } from "@/components/import/PageCard";
 import { useApp } from "@/state";
 import { useToaster } from "@/components/Toaster";
@@ -19,7 +19,15 @@ type IngestState = {
   running: boolean;
   succeeded: number;
   failed: number;
+  // Wave 4: post-import seed-crawl banner state.
+  seedCrawl: SeedCrawlState | null;
 };
+
+/// `running` covers the optimistic "补充资料中…" banner. Once the backend
+/// fires `seed_crawl:done`, we swap to `done` for 5 seconds before clearing.
+type SeedCrawlState =
+  | { kind: "running" }
+  | { kind: "done"; chunks_added: number };
 
 type IngestCtx = {
   state: IngestState;
@@ -27,6 +35,8 @@ type IngestCtx = {
   setGameId: (id: string | null) => void;
   start: (gameId: string, paths: string[]) => Promise<void>;
   retry: (gameId: string, item: PageItem) => Promise<void>;
+  /// Manually dismiss the seed-crawl banner.
+  dismissSeedCrawl: () => void;
 };
 
 const Ctx = createContext<IngestCtx | null>(null);
@@ -56,6 +66,7 @@ export default function IngestProvider({ children }: { children: ReactNode }) {
     running: false,
     succeeded: 0,
     failed: 0,
+    seedCrawl: null,
   });
 
   // The path-array as submitted to the running job, indexed by page_number-1.
@@ -107,6 +118,8 @@ export default function IngestProvider({ children }: { children: ReactNode }) {
             running: false,
             succeeded,
             failed,
+            // Optimistic banner: backend has just kicked off seed crawl.
+            seedCrawl: succeeded > 0 ? { kind: "running" } : cur.seedCrawl,
           }));
           toaster.push(
             `${t("import.progress.done")} ${succeeded}/${succeeded + failed}`,
@@ -117,6 +130,16 @@ export default function IngestProvider({ children }: { children: ReactNode }) {
           if (pageRef.current === "import") {
             setPage("handbook", game_id);
           }
+        }),
+        researchIpc.onSeedCrawlDone(({ chunks_added }) => {
+          setState((cur) => ({
+            ...cur,
+            seedCrawl: { kind: "done", chunks_added },
+          }));
+          // Auto-clear after 5 seconds so the UI doesn't get stale.
+          setTimeout(() => {
+            setState((cur) => ({ ...cur, seedCrawl: null }));
+          }, 5000);
         }),
       ]);
       if (cancelled) {
@@ -186,9 +209,46 @@ export default function IngestProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const dismissSeedCrawl = useCallback(() => {
+    setState((cur) => ({ ...cur, seedCrawl: null }));
+  }, []);
+
   return (
-    <Ctx.Provider value={{ state, setItems, setGameId, start, retry }}>
+    <Ctx.Provider
+      value={{ state, setItems, setGameId, start, retry, dismissSeedCrawl }}
+    >
+      {state.seedCrawl && <SeedCrawlBanner state={state.seedCrawl} onDismiss={dismissSeedCrawl} />}
       {children}
     </Ctx.Provider>
+  );
+}
+
+function SeedCrawlBanner({
+  state,
+  onDismiss,
+}: {
+  state: SeedCrawlState;
+  onDismiss: () => void;
+}) {
+  const { t } = useTranslation();
+  const text =
+    state.kind === "running"
+      ? t("ingest.seedCrawl.running")
+      : t("ingest.seedCrawl.done", { count: state.chunks_added });
+  return (
+    <div
+      data-testid="seed-crawl-banner"
+      className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-md border border-ink/15 bg-paper px-4 py-2 text-sm text-ink shadow-md"
+    >
+      <span>{text}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label={t("common.cancel")}
+        className="text-ink/40 hover:text-ink"
+      >
+        ×
+      </button>
+    </div>
   );
 }

@@ -12,6 +12,48 @@ pub struct RetrievedChunk {
     pub fused_score: f32,
 }
 
+/// Tier multiplier used for the confidence score. Mirrors the spec's
+/// "tier_weights" table:
+///
+/// | tier        | weight |
+/// | ----------- | ------ |
+/// | publisher   | 1.0    |
+/// | designer    | 0.9    |
+/// | community   | 0.7    |
+/// | unverified  | 0.5    |
+pub fn tier_weight(tier: &str) -> f32 {
+    match tier {
+        "publisher" => 1.0,
+        "designer" => 0.9,
+        "community" => 0.7,
+        "unverified" => 0.5,
+        _ => 0.5,
+    }
+}
+
+/// Compute the ask-time confidence score for a single retrieved hit:
+///
+/// `0.6 * top_cosine + 0.3 * fts_rank_normalized + 0.1 * tier_weight`
+///
+/// All inputs are clamped to `[0,1]` so caller bugs can't produce negative
+/// confidences. The retrieval layer takes the max over the top-K hits.
+pub fn compute_confidence(top_cosine: f32, fts_rank_normalized: f32, trust_tier: &str) -> f32 {
+    let c = top_cosine.clamp(0.0, 1.0);
+    let f = fts_rank_normalized.clamp(0.0, 1.0);
+    let t = tier_weight(trust_tier).clamp(0.0, 1.0);
+    0.6 * c + 0.3 * f + 0.1 * t
+}
+
+/// Per-hit endorsement adjustment used by retrieval-time scoring (NOT
+/// embedding). Adds +0.1 for thumbs-up, -0.2 for thumbs-down, 0 if unset.
+pub fn endorsement_boost(endorsed: Option<bool>) -> f32 {
+    match endorsed {
+        Some(true) => 0.1,
+        Some(false) => -0.2,
+        None => 0.0,
+    }
+}
+
 /// Reciprocal Rank Fusion of two ranked lists.
 /// `vec_ranked` and `fts_ranked` are chunk ids ordered best-first.
 /// Returns the top `top_n` chunk ids with their fused scores, best-first.
@@ -86,6 +128,31 @@ mod tests {
         assert!(ids.contains(&10));
         assert!(ids.contains(&30));
         assert!(ids.contains(&40));
+    }
+
+    #[test]
+    fn confidence_formula_examples() {
+        // All-zero inputs → tier-only contribution.
+        let publisher_only = compute_confidence(0.0, 0.0, "publisher");
+        assert!((publisher_only - 0.10).abs() < 1e-5);
+
+        // Strong cosine + perfect fts + community: 0.6*0.9 + 0.3*1 + 0.1*0.7
+        // = 0.54 + 0.30 + 0.07 = 0.91.
+        let strong = compute_confidence(0.9, 1.0, "community");
+        assert!((strong - 0.91).abs() < 1e-5, "got {strong}");
+
+        // Below threshold case used in spec τ=0.45: weak cosine + weak fts.
+        let weak = compute_confidence(0.4, 0.2, "unverified");
+        // 0.6*0.4 + 0.3*0.2 + 0.1*0.5 = 0.24 + 0.06 + 0.05 = 0.35.
+        assert!((weak - 0.35).abs() < 1e-5);
+        assert!(weak < 0.45, "weak should be below default threshold");
+    }
+
+    #[test]
+    fn endorsement_boost_signs() {
+        assert!((endorsement_boost(Some(true)) - 0.1).abs() < 1e-6);
+        assert!((endorsement_boost(Some(false)) + 0.2).abs() < 1e-6);
+        assert!(endorsement_boost(None) == 0.0);
     }
 
     #[test]

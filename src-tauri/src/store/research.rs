@@ -160,7 +160,20 @@ pub fn current_budget(db: &Db, game_id: &str) -> AppResult<u32> {
 /// Atomically bump today's counter and return the post-increment value.
 /// Errors with `AppError::Other` if the cap would be exceeded — caller is
 /// expected to abort the research pass when this happens.
+///
+/// Reads the user-configurable cap from `settings.kb.research_daily_cap` if
+/// set, falling back to `RESEARCH_DAILY_CAP`. The setting is read at call
+/// time so a UI change takes effect on the next research event without a
+/// process restart.
 pub fn increment_budget(db: &Db, game_id: &str) -> AppResult<u32> {
+    let cap =
+        super::settings::get_u32(db, super::settings::KB_RESEARCH_DAILY_CAP, RESEARCH_DAILY_CAP);
+    increment_budget_with_cap(db, game_id, cap)
+}
+
+/// Same as `increment_budget` but with an explicit cap. Useful for tests
+/// and for callers that already resolved the user override.
+pub fn increment_budget_with_cap(db: &Db, game_id: &str, cap: u32) -> AppResult<u32> {
     let date = today_utc();
     let conn = db.lock();
     let tx = conn.unchecked_transaction()?;
@@ -174,9 +187,9 @@ pub fn increment_budget(db: &Db, game_id: &str) -> AppResult<u32> {
         params![game_id, date],
         |row| row.get(0),
     )?;
-    if (current as u32) >= RESEARCH_DAILY_CAP {
+    if (current as u32) >= cap {
         return Err(AppError::Other(anyhow::anyhow!(
-            "research daily cap reached for game {game_id} ({current}/{RESEARCH_DAILY_CAP})"
+            "research daily cap reached for game {game_id} ({current}/{cap})"
         )));
     }
     tx.execute(

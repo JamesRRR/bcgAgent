@@ -16,7 +16,7 @@ use crate::research::orchestrator::{
     self, OrchestratorDeps, ResearchOutcome, ResearchPlan, DEFAULT_MAX_HITS_TO_FETCH,
 };
 use crate::research::pipeline::{self, ResearchSummary};
-use crate::store::games as store_games;
+use crate::store::{chunks as store_chunks, games as store_games};
 
 use super::AppState;
 
@@ -111,4 +111,95 @@ pub async fn cmd_run_extractors(
         faqs: f?,
         setup: s?,
     })
+}
+
+/// Wave 4 user feedback hook. Sets the `endorsed` column on a chunk to
+/// thumbs-up (`true`) or thumbs-down (`false`). The retrieval scorer reads
+/// this column at score time — there's no re-embedding to do.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn cmd_endorse_chunk(
+    state: State<'_, AppState>,
+    chunk_id: i64,
+    up: bool,
+) -> AppResult<()> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || store_chunks::update_chunk_endorsed(&db, chunk_id, Some(up)))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KbSourceKindCount {
+    pub source_kind: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct KbSnapshot {
+    pub game_id: String,
+    pub chunks_by_source_kind: Vec<KbSourceKindCount>,
+    pub components: u64,
+    pub faq_pairs: u64,
+    pub setup_steps: u64,
+    pub research_events: u64,
+}
+
+/// Wave 4/5 KB-diff harness command. Aggregates per-source-kind chunk counts
+/// and the structured-table sizes for `game_id`. Pure read; cheap.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn cmd_kb_diff(state: State<'_, AppState>, game_id: String) -> AppResult<KbSnapshot> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || -> AppResult<KbSnapshot> {
+        let counts = store_chunks::count_chunks_by_source_kind(&db, &game_id)?;
+        let chunks_by_source_kind: Vec<KbSourceKindCount> = counts
+            .into_iter()
+            .map(|(source_kind, count)| KbSourceKindCount { source_kind, count })
+            .collect();
+
+        let conn = db.lock();
+        let components: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM components WHERE game_id = ?",
+                rusqlite::params![&game_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u64;
+        let faq_pairs: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM faq_pairs WHERE game_id = ?",
+                rusqlite::params![&game_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u64;
+        let setup_steps: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM setup_steps WHERE game_id = ?",
+                rusqlite::params![&game_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u64;
+        let research_events: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM research_events WHERE game_id = ?",
+                rusqlite::params![&game_id],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as u64;
+        drop(conn);
+
+        Ok(KbSnapshot {
+            game_id,
+            chunks_by_source_kind,
+            components,
+            faq_pairs,
+            setup_steps,
+            research_events,
+        })
+    })
+    .await
+    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }

@@ -46,6 +46,10 @@ export type SearchHit = {
   score: number;
 };
 
+/// Trust tier shipped with each retrieved chunk. Mirrors the Rust
+/// `TrustTier` enum used in research connectors and chunk provenance.
+export type TrustTier = "publisher" | "designer" | "community" | "unverified";
+
 export type RetrievedChunk = {
   chunk_id: number;
   game_id: string;
@@ -55,6 +59,12 @@ export type RetrievedChunk = {
   heading_path: string | null;
   content: string;
   fused_score: number;
+  // Wave 4 provenance — optional so older payloads still parse during dev.
+  source_kind?: string;
+  source_url?: string | null;
+  trust_tier?: TrustTier;
+  official?: boolean;
+  endorsed?: boolean | null;
 };
 
 // ----- Games -----
@@ -190,6 +200,8 @@ export const bgg = {
 // ----- Ask (RAG streaming) -----
 
 export type AskDone = { qa_id: string };
+export type AskResearchStarted = { trigger: string; confidence: number };
+export type AskResearchDone = { chunks_added: number };
 
 export const ask = {
   run: (question: string, game_id: string | null) =>
@@ -200,6 +212,69 @@ export const ask = {
     listen<string>("ask:token", (e) => cb(e.payload)),
   onDone: (cb: (e: AskDone) => void): Promise<UnlistenFn> =>
     listen<AskDone>("ask:done", (e) => cb(e.payload)),
+  onResearchStarted: (
+    cb: (e: AskResearchStarted) => void,
+  ): Promise<UnlistenFn> =>
+    listen<AskResearchStarted>("ask:research_started", (e) => cb(e.payload)),
+  onResearchDone: (
+    cb: (e: AskResearchDone) => void,
+  ): Promise<UnlistenFn> =>
+    listen<AskResearchDone>("ask:research_done", (e) => cb(e.payload)),
+};
+
+// ----- Research / KB ----------------------------------------------------
+
+export type ResearchOutcome = {
+  event_id: number;
+  chunks_added: number;
+  urls_fetched: string[];
+  timed_out: boolean;
+};
+
+export type KbSourceKindCount = {
+  source_kind: string;
+  count: number;
+};
+
+export type KbSnapshot = {
+  game_id: string;
+  chunks_by_source_kind: KbSourceKindCount[];
+  components: number;
+  faq_pairs: number;
+  setup_steps: number;
+  research_events: number;
+};
+
+export type ExtractSummary = {
+  cleared: number;
+  created: number;
+  chunks_added: number;
+};
+
+export type ExtractorRunSummary = {
+  components: ExtractSummary;
+  faqs: ExtractSummary;
+  setup: ExtractSummary;
+};
+
+export type SeedCrawlDone = { game_id: string; chunks_added: number };
+
+export const research = {
+  /// Force a research pass on `query` for `game_id`, bypassing the confidence
+  /// check. Returns the orchestrator outcome (chunks added, urls fetched).
+  explicit: (game_id: string, query: string) =>
+    invoke<ResearchOutcome>("cmd_explicit_research", { game_id, query }),
+  /// User feedback hook — thumbs-up / thumbs-down on a single chunk.
+  endorseChunk: (chunk_id: number, up: boolean) =>
+    invoke<void>("cmd_endorse_chunk", { chunk_id, up }),
+  /// Re-run the three structured extractors for one game.
+  runExtractors: (game_id: string) =>
+    invoke<ExtractorRunSummary>("cmd_run_extractors", { game_id }),
+  /// KB diff snapshot — used by the Wave 5 E2E harness and Settings panel.
+  kbDiff: (game_id: string) =>
+    invoke<KbSnapshot>("cmd_kb_diff", { game_id }),
+  onSeedCrawlDone: (cb: (e: SeedCrawlDone) => void): Promise<UnlistenFn> =>
+    listen<SeedCrawlDone>("seed_crawl:done", (e) => cb(e.payload)),
 };
 
 // ----- Walkthrough (beginner tutorial generation) -----
@@ -324,7 +399,15 @@ export const audio = {
 
 // ----- Settings -----
 
-export type SecretName = "dashscope" | "minimax" | "elevenlabs";
+export type SecretName = "dashscope" | "minimax" | "elevenlabs" | "brave";
+
+/// Wave 4 KB setting keys. Centralised so backend + frontend stay in sync.
+export const KB_KEYS = {
+  AUTO_RESEARCH: "kb.auto_research_enabled",
+  INCLUDE_UNOFFICIAL: "kb.include_unofficial",
+  CONFIDENCE_THRESHOLD: "kb.confidence_threshold",
+  RESEARCH_DAILY_CAP: "kb.research_daily_cap",
+} as const;
 
 export const settings = {
   getSecret: (name: SecretName) =>

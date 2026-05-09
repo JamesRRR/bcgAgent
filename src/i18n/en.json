@@ -94,8 +94,15 @@
     "recordHint": "Hold the mic to record",
     "gameFilter": "Game",
     "gameFilterAll": "All games",
+    "searchWeb": "Search the web for more sources",
     "citations": {
-      "heading": "Citations"
+      "heading": "Citations",
+      "thumbsUp": "Mark as helpful",
+      "thumbsDown": "Mark as unhelpful",
+      "publisherTooltip": "Publisher rule",
+      "designerTooltip": "Designer commentary",
+      "communityTooltip": "Community discussion",
+      "unverifiedTooltip": "Unverified source"
     },
     "history": {
       "title": "History"
@@ -125,6 +132,14 @@
     },
     "retrieval": {
       "kLabel": "Retrieval top-K"
+    },
+    "kb": {
+      "label": "Knowledge expansion",
+      "braveKey": "Brave Search API key",
+      "autoResearch": "Auto-research from the web",
+      "includeUnofficial": "Include unofficial sources",
+      "dailyCap": "Daily research events cap",
+      "confThreshold": "Auto-research confidence threshold"
     }
   },
   "common": {
@@ -139,5 +154,11 @@
     "preparing": "Preparing local embedding model… {{bytes}} GB / {{total}} GB",
     "ready": "Model ready",
     "error": "Model preparation failed"
+  },
+  "ingest": {
+    "seedCrawl": {
+      "running": "Fetching extra context… (dismissable)",
+      "done": "Added {{count}} extra snippets"
+    }
   }
 }

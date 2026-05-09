@@ -94,8 +94,15 @@
     "recordHint": "按住麦克风说话",
     "gameFilter": "桌游范围",
     "gameFilterAll": "全部",
+    "searchWeb": "搜索网络补充资料",
     "citations": {
-      "heading": "引用片段"
+      "heading": "引用片段",
+      "thumbsUp": "标记为有用",
+      "thumbsDown": "标记为无用",
+      "publisherTooltip": "出版商规则",
+      "designerTooltip": "设计师评论",
+      "communityTooltip": "社区讨论",
+      "unverifiedTooltip": "未验证来源"
     },
     "history": {
       "title": "历史记录"
@@ -125,6 +132,14 @@
     },
     "retrieval": {
       "kLabel": "检索条数 K"
+    },
+    "kb": {
+      "label": "知识扩展",
+      "braveKey": "Brave Search API Key",
+      "autoResearch": "自动联网搜索",
+      "includeUnofficial": "包含非官方来源",
+      "dailyCap": "每日联网搜索次数上限",
+      "confThreshold": "联网搜索置信度阈值"
     }
   },
   "common": {
@@ -139,5 +154,11 @@
     "preparing": "正在准备中文嵌入模型… {{bytes}} GB / {{total}} GB",
     "ready": "模型已就绪",
     "error": "模型准备失败"
+  },
+  "ingest": {
+    "seedCrawl": {
+      "running": "正在补充网络资料… (可关闭)",
+      "done": "已补充 {{count}} 条资料"
+    }
   }
 }

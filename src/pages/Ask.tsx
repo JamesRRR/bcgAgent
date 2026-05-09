@@ -8,6 +8,7 @@ import {
   ask as askIpc,
   audio,
   qa as qaIpc,
+  research as researchIpc,
   type QAHistory,
   type RetrievedChunk,
 } from "@/lib/ipc";
@@ -62,7 +63,7 @@ export default function Ask() {
   }, [ttsOn]);
 
   const handleAsk = useCallback(
-    async (q: string) => {
+    async (q: string, forceResearch: boolean = false) => {
       if (busy) return;
       setBusy(true);
       setStreaming(true);
@@ -79,6 +80,18 @@ export default function Ask() {
         audio.speakCancel(h).catch(() => {
           /* noop */
         });
+      }
+
+      // Wave 4: if the user pressed the magnifier, fire explicit research
+      // for the current game BEFORE the normal ask call. The new chunks land
+      // in the KB, then the regular `ask.run` will retrieve them.
+      if (forceResearch && gameFilter) {
+        try {
+          await researchIpc.explicit(gameFilter, q);
+        } catch (e) {
+          // Non-fatal — proceed with the ordinary ask path.
+          toaster.push(String(e), "error");
+        }
       }
 
       // Register listeners BEFORE invoking ask.run().

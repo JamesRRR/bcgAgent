@@ -6,6 +6,56 @@ use super::jieba;
 use super::models::Chunk;
 use crate::error::AppResult;
 
+/// Read-only provenance snapshot for a chunk. Used by retrieval to compute
+/// confidence and by the ask-citation payload.
+#[derive(Debug, Clone)]
+pub struct ChunkProvenanceRow {
+    pub chunk_id: i64,
+    pub source_kind: String,
+    pub source_url: Option<String>,
+    pub trust_tier: String,
+    pub official: bool,
+    pub endorsed: Option<bool>,
+}
+
+/// Fetch the provenance row for `chunk_id`. Returns `None` if the chunk
+/// doesn't exist.
+pub fn get_chunk_provenance(db: &Db, chunk_id: i64) -> AppResult<Option<ChunkProvenanceRow>> {
+    let conn = db.lock();
+    let mut stmt = conn.prepare(
+        "SELECT id, source_kind, source_url, trust_tier, official, endorsed \
+         FROM chunks WHERE id = ?",
+    )?;
+    let mut rows = stmt.query(params![chunk_id])?;
+    if let Some(row) = rows.next()? {
+        let endorsed_raw: Option<i64> = row.get(5)?;
+        Ok(Some(ChunkProvenanceRow {
+            chunk_id: row.get(0)?,
+            source_kind: row.get(1)?,
+            source_url: row.get(2)?,
+            trust_tier: row.get(3)?,
+            official: row.get::<_, i64>(4)? != 0,
+            endorsed: endorsed_raw.map(|v| v != 0),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Whether `chunk_id` has `official=1`. Used by ask-time retrieval to drop
+/// non-official chunks when the user has toggled `kb.include_unofficial=false`.
+pub fn is_chunk_official(db: &Db, chunk_id: i64) -> AppResult<bool> {
+    let conn = db.lock();
+    let off: Option<i64> = conn
+        .query_row(
+            "SELECT official FROM chunks WHERE id = ?",
+            params![chunk_id],
+            |r| r.get(0),
+        )
+        .ok();
+    Ok(off.unwrap_or(0) != 0)
+}
+
 /// Provenance metadata attached to every chunk. See the design spec
 /// "Provenance spine" section for the full vocabulary. Defaults match
 /// the legacy photo-OCR flow: `photo_ocr` / `publisher` / official.
