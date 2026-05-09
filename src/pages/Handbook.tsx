@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, List, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/state";
 import { useToaster } from "@/components/Toaster";
@@ -29,6 +29,9 @@ export default function Handbook() {
   const [activePageNumber, setActivePageNumber] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
+  // TOC starts collapsed: most users open the handbook to read content,
+  // not to navigate a graph of headings. They can flip it on if they need it.
+  const [tocOpen, setTocOpen] = useState(false);
 
   const readerRef = useRef<PageReaderHandle | null>(null);
 
@@ -208,6 +211,18 @@ export default function Handbook() {
         <Button
           variant="ghost"
           size="sm"
+          onClick={() => setTocOpen((o) => !o)}
+          aria-pressed={tocOpen}
+          aria-label={t("handbook.toc")}
+          title={t("handbook.toc")}
+          className={tocOpen ? "text-accent" : "text-ink/60"}
+        >
+          <List className="w-4 h-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setPage("walkthrough", selectedGameId)}
           aria-label={t("walkthrough.title")}
           title={t("walkthrough.title")}
@@ -225,13 +240,15 @@ export default function Handbook() {
 
       {/* Three-column body */}
       <div className="flex-1 flex min-h-0">
-        <TocSidebar
-          gameTitle={game.name_zh}
-          toc={toc}
-          hits={hits}
-          query={query}
-          onJumpToPage={handleJumpToPage}
-        />
+        {tocOpen && (
+          <TocSidebar
+            gameTitle={game.name_zh}
+            toc={toc}
+            hits={hits}
+            query={query}
+            onJumpToPage={handleJumpToPage}
+          />
+        )}
         <PageReader
           ref={readerRef}
           pages={pageList}

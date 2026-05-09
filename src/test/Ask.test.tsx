@@ -47,6 +47,10 @@ vi.mock("@/lib/ipc", () => {
       transcribe: vi.fn(),
       speak: vi.fn(() => Promise.resolve("tts-handle-1")),
       speakCancel: vi.fn(() => Promise.resolve()),
+      micCaptureStart: vi.fn(() => Promise.resolve()),
+      micCaptureStop: vi.fn(() => Promise.resolve("")),
+      micCaptureCancel: vi.fn(() => Promise.resolve()),
+      onTranscribePartial: vi.fn(() => Promise.resolve(() => {})),
     },
     settings: {
       getSecret: vi.fn(),

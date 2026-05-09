@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ImageIcon, Pencil } from "lucide-react";
+import { ImageIcon, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { inTauri } from "@/lib/transport";
 import type { Game } from "@/lib/ipc";
 
@@ -10,9 +10,20 @@ type Props = {
   onClick: () => void;
   onRename?: () => void;
   onChangeCover?: () => void;
+  onDelete?: () => void;
+  onResearch?: () => void;
+  researchBusy?: boolean;
 };
 
-export default function GameCard({ game, onClick, onRename, onChangeCover }: Props) {
+export default function GameCard({
+  game,
+  onClick,
+  onRename,
+  onChangeCover,
+  onDelete,
+  onResearch,
+  researchBusy,
+}: Props) {
   const { t, i18n } = useTranslation();
   const firstChar = game.name_zh.charAt(0) || "?";
   const pageLabel =
@@ -104,6 +115,39 @@ export default function GameCard({ game, onClick, onRename, onChangeCover }: Pro
           className="absolute top-2 right-10 z-10 p-1.5 rounded-full bg-paper/90 text-ink/60 border border-ink/10 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent focus:opacity-100"
         >
           <ImageIcon className="w-3.5 h-3.5" />
+        </button>
+      )}
+      {onResearch && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onResearch();
+          }}
+          disabled={researchBusy}
+          aria-label="重建知识库"
+          title="重建知识库（BGG + 插图说明）"
+          data-testid={`research-${game.id}`}
+          className="absolute top-2 right-[4.5rem] z-10 p-1.5 rounded-full bg-paper/90 text-ink/60 border border-ink/10 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-paper hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent focus:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw
+            className={"w-3.5 h-3.5 " + (researchBusy ? "animate-spin" : "")}
+          />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          aria-label={t("library.delete")}
+          title={t("library.delete")}
+          data-testid={`delete-${game.id}`}
+          className="absolute top-2 left-2 z-10 p-1.5 rounded-full bg-paper/90 text-ink/60 border border-ink/10 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-paper hover:text-rose-600 focus:outline-none focus:ring-2 focus:ring-accent focus:opacity-100"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       )}
     </div>

@@ -2,9 +2,7 @@ use std::path::PathBuf;
 
 /// `~/Library/Application Support/bcgAgent/`
 pub fn app_data_dir() -> PathBuf {
-    dirs::data_dir()
-        .expect("no data dir")
-        .join("bcgAgent")
+    dirs::data_dir().expect("no data dir").join("bcgAgent")
 }
 
 pub fn db_path() -> PathBuf {

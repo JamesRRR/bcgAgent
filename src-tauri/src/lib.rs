@@ -2,17 +2,18 @@ use tracing_subscriber::EnvFilter;
 
 use error::AppResult;
 
-pub mod paths;
 pub mod error;
 pub mod events;
+pub mod paths;
 pub mod secrets;
 
-pub mod store;
-pub mod ocr;
-pub mod embed;
-pub mod llm;
 pub mod audio;
 pub mod cover;
+pub mod embed;
+pub mod llm;
+pub mod ocr;
+pub mod research;
+pub mod store;
 
 pub mod commands;
 
@@ -31,6 +32,7 @@ pub fn run() {
 
     paths::ensure_layout().expect("create app data layout");
     let db = store::Db::open().expect("open sqlite db");
+    audio::tts::bootstrap_from_dev_secrets(&db);
     let state = commands::AppState::new(db);
 
     tauri::Builder::default()
@@ -66,6 +68,23 @@ pub fn run() {
                         },
                     );
                 };
+
+                // Also kick off a background whisper-model download so the
+                // first push-to-talk press doesn't block on a 1-2 min fetch.
+                // No status emits — silent best-effort. ensure_model is
+                // idempotent.
+                std::thread::spawn(|| {
+                    let rt = match tokio::runtime::Runtime::new() {
+                        Ok(rt) => rt,
+                        Err(e) => {
+                            tracing::warn!("whisper warmup runtime: {e}");
+                            return;
+                        }
+                    };
+                    if let Err(e) = rt.block_on(audio::whisper::ensure_model()) {
+                        tracing::warn!("whisper model warmup failed: {e}");
+                    }
+                });
 
                 if embed::is_ready() {
                     emit("ready", embed::cache_size_bytes(), None);
@@ -107,6 +126,7 @@ pub fn run() {
             commands::games::game_auto_set_cover,
             commands::games::game_set_cover_from_file,
             commands::games::game_rename,
+            commands::games::game_delete,
             commands::pages::pages_list_by_game,
             commands::pages::page_get,
             commands::pages::page_illustrations_list,
@@ -114,9 +134,24 @@ pub fn run() {
             commands::search::search_keyword,
             commands::search::search_semantic,
             commands::ingest::ingest_pages,
+            commands::import_external::bgg_search,
+            commands::import_external::import_from_bgg,
+            commands::research::research_run,
             commands::ask::ask,
             commands::walkthrough::walkthrough_run,
+            commands::walkthrough::walkthrough_get_cached,
+            commands::walkthrough_session::walkthrough_session_start,
+            commands::walkthrough_session::walkthrough_session_continue,
+            commands::walkthrough_session::walkthrough_session_get,
+            commands::walkthrough_session::walkthrough_session_reset,
             commands::audio::transcribe,
+            commands::audio::transcribe_stream_start,
+            commands::audio::transcribe_chunk,
+            commands::audio::transcribe_finalize,
+            commands::audio::transcribe_stream_cancel,
+            commands::audio::mic_capture_start,
+            commands::audio::mic_capture_stop,
+            commands::audio::mic_capture_cancel,
             commands::audio::speak,
             commands::audio::speak_cancel,
             commands::settings::settings_get_secret,

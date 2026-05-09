@@ -49,6 +49,18 @@ impl Db {
     fn init(conn: Connection) -> AppResult<Self> {
         conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         conn.execute_batch(MIGRATIONS)?;
+        // Defensive ALTERs for new columns added after first launch. SQLite
+        // has no IF NOT EXISTS for columns, so we just swallow the duplicate
+        // column error. Keep this list short — full schema changes go in
+        // migrations/.
+        for sql in &[
+            "ALTER TABLE page_illustrations ADD COLUMN token TEXT",
+            "ALTER TABLE page_illustrations ADD COLUMN description TEXT",
+            "ALTER TABLE games ADD COLUMN bgg_id INTEGER",
+        ] {
+            let _ = conn.execute(sql, []);
+        }
+        ensure_external_refs_table(&conn)?;
         retokenize_fts_if_outdated(&conn)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -59,6 +71,30 @@ impl Db {
     pub(crate) fn lock(&self) -> parking_lot::MutexGuard<'_, Connection> {
         self.conn.lock()
     }
+}
+
+/// Create the `game_external_refs` table on first run if missing. Stores
+/// pre-fetched knowledge from BGG (description, forum threads, gallery
+/// captions) and Qwen-VL illustration captions. Each row is idempotently
+/// keyed by (game_id, source, kind, ext_id) so re-imports overwrite cleanly.
+fn ensure_external_refs_table(conn: &Connection) -> AppResult<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS game_external_refs (
+             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+             game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+             source      TEXT NOT NULL,
+             kind        TEXT NOT NULL,
+             ext_id      TEXT,
+             title       TEXT,
+             content     TEXT NOT NULL,
+             url         TEXT,
+             fetched_at  INTEGER NOT NULL,
+             UNIQUE (game_id, source, kind, ext_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_external_refs_game
+             ON game_external_refs(game_id);",
+    )?;
+    Ok(())
 }
 
 /// Bump this whenever the indexing-side jieba behavior changes. On startup we
@@ -78,8 +114,7 @@ fn retokenize_fts_if_outdated(conn: &Connection) -> AppResult<()> {
     if stored.as_deref() == Some(FTS_INDEX_VERSION) {
         return Ok(());
     }
-    let chunk_count: i64 =
-        conn.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+    let chunk_count: i64 = conn.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
     if chunk_count > 0 {
         tracing::info!(
             "rebuilding chunks_fts ({} rows) for tokenizer={}",
@@ -87,12 +122,9 @@ fn retokenize_fts_if_outdated(conn: &Connection) -> AppResult<()> {
             FTS_INDEX_VERSION
         );
         conn.execute("DELETE FROM chunks_fts", [])?;
-        let mut stmt =
-            conn.prepare("SELECT id, content, heading_path FROM chunks")?;
+        let mut stmt = conn.prepare("SELECT id, content, heading_path FROM chunks")?;
         let rows: Vec<(i64, String, Option<String>)> = stmt
-            .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })?
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
         for (id, content, heading) in rows {

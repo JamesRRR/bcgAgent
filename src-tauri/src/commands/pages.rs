@@ -45,9 +45,7 @@ pub async fn qa_list(
     limit: i64,
 ) -> AppResult<Vec<QAHistory>> {
     let db = state.db.clone();
-    tokio::task::spawn_blocking(move || {
-        qa::list_qa(&db, game_id.as_deref(), limit.max(0) as usize)
-    })
-    .await
-    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+    tokio::task::spawn_blocking(move || qa::list_qa(&db, game_id.as_deref(), limit.max(0) as usize))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }

@@ -78,7 +78,10 @@ mod tests {
         let vec_ranked = vec![10, 20, 30];
         let fts_ranked = vec![20, 40];
         let out = rrf(&vec_ranked, &fts_ranked, 60, 10);
-        assert_eq!(out[0].0, 20, "chunk 20 appears in both lists, should be top");
+        assert_eq!(
+            out[0].0, 20,
+            "chunk 20 appears in both lists, should be top"
+        );
         let ids: Vec<i64> = out.iter().map(|(i, _)| *i).collect();
         assert!(ids.contains(&10));
         assert!(ids.contains(&30));

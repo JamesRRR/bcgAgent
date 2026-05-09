@@ -169,12 +169,11 @@ async fn pages_list_by_game(
     Json(body): Json<GameIdBody>,
 ) -> Result<Json<Vec<Page>>, (StatusCode, String)> {
     let db = ctx.state.db.clone();
-    let res = tokio::task::spawn_blocking(move || {
-        store_pages::list_pages_by_game(&db, &body.game_id)
-    })
-    .await
-    .map_err(err500)?
-    .map_err(err500)?;
+    let res =
+        tokio::task::spawn_blocking(move || store_pages::list_pages_by_game(&db, &body.game_id))
+            .await
+            .map_err(err500)?
+            .map_err(err500)?;
     Ok(Json(res))
 }
 
@@ -550,8 +549,8 @@ pub fn run_test_server() {
             tts: Mutex::new(HashMap::new()),
         });
 
-        let upload_dir = std::env::temp_dir()
-            .join(format!("bcgagent-uploads-{}", std::process::id()));
+        let upload_dir =
+            std::env::temp_dir().join(format!("bcgagent-uploads-{}", std::process::id()));
         std::fs::create_dir_all(&upload_dir).expect("create upload dir");
 
         let (tx, _) = broadcast::channel::<SsePayload>(1024);

@@ -2,16 +2,16 @@ use std::io::Cursor;
 use std::path::Path;
 use std::time::Duration;
 
-use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use image::ImageFormat;
 use once_cell::sync::Lazy;
 use reqwest::{Client, StatusCode};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
+use super::prompt::{CAPTION_PROMPT, GROUNDED_PROMPT, PROMPT};
 use crate::error::{AppError, AppResult};
 use crate::secrets;
-use super::prompt::{GROUNDED_PROMPT, PROMPT};
 
 #[derive(Debug, Clone)]
 pub struct Illustration {
@@ -23,10 +23,12 @@ pub struct Illustration {
     pub x2: u32,
     pub y2: u32,
     pub label: Option<String>,
+    /// Token the model used to anchor this illustration in the markdown
+    /// (e.g. "ill:0"). The renderer looks up this token to inline the crop.
+    pub token: String,
 }
 
-const ENDPOINT: &str =
-    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const ENDPOINT: &str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const MODEL: &str = "qwen-vl-max-latest";
 const MAX_EDGE: u32 = 1568;
 const JPEG_QUALITY: u8 = 85;
@@ -103,8 +105,7 @@ fn load_and_prepare(path: &Path) -> AppResult<PreparedImage> {
     let resized = img.resize_exact(nw, nh, image::imageops::FilterType::Lanczos3);
 
     let mut buf = Vec::<u8>::new();
-    let encoder =
-        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
     resized.to_rgb8().write_with_encoder(encoder)?;
     Ok(PreparedImage {
         bytes: buf,
@@ -233,9 +234,7 @@ pub async fn extract_markdown(image_path: &Path) -> AppResult<String> {
 /// the original image's pixel space, ready to crop directly from the stored
 /// page photo. On any parse failure we fall back to plain `extract_markdown`
 /// so a flaky JSON response never breaks ingestion.
-pub async fn extract_grounded(
-    image_path: &Path,
-) -> AppResult<(String, Vec<Illustration>)> {
+pub async fn extract_grounded(image_path: &Path) -> AppResult<(String, Vec<Illustration>)> {
     let prepared = load_and_prepare(image_path)?;
     let body = build_body_with_prompt(
         &prepared.bytes,
@@ -283,8 +282,7 @@ pub async fn extract_grounded(
                     ));
                 }
 
-                let retryable =
-                    status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
+                let retryable = status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
                 let body_text = r.text().await.unwrap_or_default();
                 if !retryable {
                     return Err(AppError::Ocr(format!(
@@ -293,8 +291,10 @@ pub async fn extract_grounded(
                     )));
                 }
                 tracing::warn!(attempt, %status, "qwen-vl grounded transient error");
-                last_err =
-                    Some(AppError::Ocr(format!("dashscope {}: {}", status, body_text)));
+                last_err = Some(AppError::Ocr(format!(
+                    "dashscope {}: {}",
+                    status, body_text
+                )));
             }
             Err(e) => {
                 tracing::warn!(attempt, error = %e, "qwen-vl grounded network error");
@@ -348,7 +348,7 @@ fn parse_grounded_response(
 
     let mut illustrations = Vec::new();
     if let Some(arr) = obj.get("illustrations").and_then(|i| i.as_array()) {
-        for item in arr {
+        for (idx, item) in arr.iter().enumerate() {
             let bbox = item
                 .get("bbox_2d")
                 .or_else(|| item.get("bbox"))
@@ -358,11 +358,15 @@ fn parse_grounded_response(
                 continue;
             }
             let to_u = |v: &Value| v.as_f64().map(|f| f.max(0.0));
-            let (x1, y1, x2, y2) =
-                match (to_u(&bbox[0]), to_u(&bbox[1]), to_u(&bbox[2]), to_u(&bbox[3])) {
-                    (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
-                    _ => continue,
-                };
+            let (x1, y1, x2, y2) = match (
+                to_u(&bbox[0]),
+                to_u(&bbox[1]),
+                to_u(&bbox[2]),
+                to_u(&bbox[3]),
+            ) {
+                (Some(a), Some(b), Some(c), Some(d)) => (a, b, c, d),
+                _ => continue,
+            };
             // Scale and clamp to original image bounds.
             let x1 = ((x1 as f32) * scale_x).round().max(0.0) as u32;
             let y1 = ((y1 as f32) * scale_y).round().max(0.0) as u32;
@@ -390,6 +394,7 @@ fn parse_grounded_response(
                 x2,
                 y2,
                 label,
+                token: format!("ill:{idx}"),
             });
         }
     }
@@ -430,6 +435,111 @@ fn extract_json_object(text: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Crop a single illustration out of a stored page image and ask Qwen-VL to
+/// describe it in 1-2 Chinese sentences. Returns trimmed text.
+///
+/// The crop is rendered to in-memory JPEG (no temp file) and resent through
+/// the same `/chat/completions` endpoint with `CAPTION_PROMPT`. Errors are
+/// retried up to 3 times like other OCR calls. Used by the import-time
+/// research pass to populate `page_illustrations.description`.
+pub async fn caption_crop(page_image_path: &Path, bbox: (u32, u32, u32, u32)) -> AppResult<String> {
+    let raw = std::fs::read(page_image_path)?;
+    let img = image::load_from_memory(&raw)?;
+    let (w, h) = (img.width(), img.height());
+    let (x1, y1, x2, y2) = bbox;
+    let x1 = x1.min(w.saturating_sub(1));
+    let y1 = y1.min(h.saturating_sub(1));
+    let x2 = x2.min(w).max(x1 + 1);
+    let y2 = y2.min(h).max(y1 + 1);
+    let cw = x2.saturating_sub(x1);
+    let ch = y2.saturating_sub(y1);
+    if cw < 16 || ch < 16 {
+        return Err(AppError::Ocr(format!(
+            "bbox too small to caption: {cw}x{ch}"
+        )));
+    }
+    let cropped = img.crop_imm(x1, y1, cw, ch);
+
+    // Re-encode at JPEG_QUALITY into memory and downscale to MAX_EDGE if huge.
+    let max_edge = cropped.width().max(cropped.height());
+    let cropped = if max_edge > MAX_EDGE {
+        let scale = MAX_EDGE as f32 / max_edge as f32;
+        let nw = (cropped.width() as f32 * scale).round() as u32;
+        let nh = (cropped.height() as f32 * scale).round() as u32;
+        cropped.resize(nw, nh, image::imageops::FilterType::Lanczos3)
+    } else {
+        cropped
+    };
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, JPEG_QUALITY);
+        cropped.to_rgb8().write_with_encoder(encoder)?;
+    }
+
+    let body = build_body_with_prompt(
+        &buf,
+        "image/jpeg",
+        CAPTION_PROMPT,
+        "请用 1-2 句中文描述这张图。",
+    );
+    let key = secrets::dashscope_key()?;
+
+    let mut delay_ms: u64 = 800;
+    let mut last_err: Option<AppError> = None;
+    for attempt in 1..=3u32 {
+        let resp = HTTP
+            .post(ENDPOINT)
+            .bearer_auth(&key)
+            .json(&body)
+            .send()
+            .await;
+        match resp {
+            Ok(r) => {
+                let status = r.status();
+                if status.is_success() {
+                    let v: Value = r.json().await?;
+                    let content = v
+                        .get("choices")
+                        .and_then(|c| c.get(0))
+                        .and_then(|c| c.get("message"))
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let text = strip_fence(&content);
+                    let text = text.trim().trim_matches('"').to_string();
+                    if text.is_empty() {
+                        return Err(AppError::Ocr("empty caption".into()));
+                    }
+                    return Ok(text);
+                }
+                let retryable = status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
+                let body_text = r.text().await.unwrap_or_default();
+                if !retryable {
+                    return Err(AppError::Ocr(format!(
+                        "dashscope {}: {}",
+                        status, body_text
+                    )));
+                }
+                tracing::warn!(attempt, %status, "qwen-vl caption transient error, retrying");
+                last_err = Some(AppError::Ocr(format!(
+                    "dashscope {}: {}",
+                    status, body_text
+                )));
+            }
+            Err(e) => {
+                tracing::warn!(attempt, error = %e, "qwen-vl caption network error, retrying");
+                last_err = Some(AppError::Http(e));
+            }
+        }
+        if attempt < 3 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            delay_ms *= 2;
+        }
+    }
+    Err(last_err.unwrap_or_else(|| AppError::Ocr("caption retry exhausted".into())))
 }
 
 #[cfg(test)]
@@ -555,8 +665,8 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn live_extract_markdown() {
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/page1.jpg");
+        let fixture =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/page1.jpg");
         assert!(
             fixture.exists(),
             "drop a real page at {}",

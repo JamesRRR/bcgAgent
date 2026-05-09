@@ -17,6 +17,34 @@ export default function Library() {
   const [games, setGames] = useState<Game[] | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [renaming, setRenaming] = useState<Game | null>(null);
+  const [researchingId, setResearchingId] = useState<string | null>(null);
+
+  const handleResearch = async (game: Game) => {
+    if (researchingId) return;
+    setResearchingId(game.id);
+    toaster.push(`重建《${game.name_zh}》知识库中…`, "info");
+    try {
+      const summary = await gamesIpc.researchRun(game.id);
+      const parts = [
+        summary.illustrations_captioned > 0
+          ? `${summary.illustrations_captioned} 张插图说明`
+          : null,
+        summary.description_added ? "BGG 简介" : null,
+        summary.forum_threads_added > 0
+          ? `${summary.forum_threads_added} 个论坛串`
+          : null,
+        summary.gallery_captions_added > 0
+          ? `${summary.gallery_captions_added} 个图库说明`
+          : null,
+      ].filter(Boolean);
+      const detail = parts.length > 0 ? parts.join(", ") : "无新增（数据已是最新或外部源不可用）";
+      toaster.push(`知识库已更新：${detail}`, "success");
+    } catch (e) {
+      toaster.push(String(e), "error");
+    } finally {
+      setResearchingId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +97,21 @@ export default function Library() {
       );
       setRenaming(null);
       toaster.push(`${t("library.rename")} ✓`, "success");
+    } catch (e) {
+      toaster.push(String(e), "error");
+    }
+  };
+
+  const handleDelete = async (game: Game) => {
+    const isZh = t("nav.library") === "桌游架";
+    const msg = isZh
+      ? `确认删除《${game.name_zh}》？所有页面、插图、对话和向导记录都会一并删除，无法撤销。`
+      : `Delete "${game.name_zh}"? All pages, illustrations, sessions, and walkthroughs will be removed permanently.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await gamesIpc.delete(game.id);
+      setGames((cur) => (cur ? cur.filter((g) => g.id !== game.id) : cur));
+      toaster.push(`${t("library.delete")} ✓`, "success");
     } catch (e) {
       toaster.push(String(e), "error");
     }
@@ -152,6 +195,9 @@ export default function Library() {
             onClick={() => setPage("handbook", g.id)}
             onRename={() => setRenaming(g)}
             onChangeCover={() => handleChangeCover(g)}
+            onDelete={() => handleDelete(g)}
+            onResearch={() => handleResearch(g)}
+            researchBusy={researchingId === g.id}
           />
         ))}
       </div>

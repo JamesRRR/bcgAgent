@@ -20,6 +20,7 @@ import { useIngestCtx, makeItem } from "@/components/IngestProvider";
 import Dropzone from "@/components/import/Dropzone";
 import GamePicker from "@/components/import/GamePicker";
 import PageCard, { type PageItem } from "@/components/import/PageCard";
+import BggImport from "@/components/import/BggImport";
 
 export default function Import() {
   const { t } = useTranslation();
@@ -84,14 +85,21 @@ export default function Import() {
     }
   };
 
-  // Step 1: pick or create a game.
+  // Step 1: pick or create a game (or import directly from BGG, which both
+  // creates the game and ingests in one step).
   if (!gameId) {
     return (
       <section className="px-10 py-12">
         <h1 className="text-3xl font-semibold text-ink mb-6">
           {t("import.title")}
         </h1>
-        <GamePicker onPicked={(id) => setGameId(id)} />
+        <div className="max-w-2xl space-y-6">
+          <GamePicker onPicked={(id) => setGameId(id)} />
+          <BggImport
+            existingGameId={null}
+            onImported={(gid) => setGameId(gid)}
+          />
+        </div>
       </section>
     );
   }
@@ -106,6 +114,15 @@ export default function Import() {
       </h1>
 
       <div className="max-w-2xl space-y-6">
+        <BggImport
+          existingGameId={gameId}
+          onImported={() => {
+            // Force a soft reload by clearing the game so the user sees the
+            // "Import done" state via the bookshelf — the BGG path is a
+            // one-shot, no need to keep this view alive.
+            setItems(() => []);
+          }}
+        />
         <Dropzone disabled={running} onPicked={handlePicked} />
 
         {items.length > 0 && (

@@ -68,10 +68,7 @@ pub async fn auto_set_cover(db: &Db, game_id: &str) -> AppResult<()> {
         .find_map(|p| p.thumb_path.as_deref().filter(|s| !s.is_empty()));
     if let Some(thumb) = first_thumb {
         let src = PathBuf::from(thumb);
-        let ext = src
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("webp");
+        let ext = src.extension().and_then(|s| s.to_str()).unwrap_or("webp");
         let dst = cover_dir.join(format!("cover.{ext}"));
         if let Err(e) = std::fs::copy(&src, &dst) {
             return Err(AppError::Other(anyhow::anyhow!(
@@ -86,11 +83,7 @@ pub async fn auto_set_cover(db: &Db, game_id: &str) -> AppResult<()> {
 
 /// Copy a user-chosen image into the game folder and persist as cover.
 /// Used by the "更换封面" UI override.
-pub fn set_cover_from_file(
-    db: &Db,
-    game_id: &str,
-    src_path: &str,
-) -> AppResult<String> {
+pub fn set_cover_from_file(db: &Db, game_id: &str, src_path: &str) -> AppResult<String> {
     let src = PathBuf::from(src_path);
     if !src.exists() {
         return Err(AppError::Other(anyhow::anyhow!(

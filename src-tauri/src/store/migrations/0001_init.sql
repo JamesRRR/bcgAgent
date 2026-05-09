@@ -70,8 +70,49 @@ CREATE TABLE IF NOT EXISTS page_illustrations (
     bbox_x2     INTEGER NOT NULL,
     bbox_y2     INTEGER NOT NULL,
     label       TEXT,
+    token       TEXT,
     created_at  INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_illustrations_page ON page_illustrations(page_id);
 CREATE INDEX IF NOT EXISTS idx_illustrations_game ON page_illustrations(game_id);
+
+-- Cached beginner-mode walkthrough text per game. One row per game.
+-- Generated once via MiniMax and reused on every page visit until the user
+-- explicitly clicks "重新生成", which overwrites the row.
+CREATE TABLE IF NOT EXISTS walkthroughs (
+    game_id     TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
+-- Conversational walkthrough sessions: one active session per game tracks the
+-- live "do X → confirm → do Y" loop with the LLM coach. Old sessions are not
+-- pruned automatically — `walkthrough_session_reset` deletes by game_id.
+CREATE TABLE IF NOT EXISTS walkthrough_sessions (
+    session_id  TEXT PRIMARY KEY,
+    game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    phase       TEXT NOT NULL DEFAULT 'setup',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_walkthrough_sessions_game
+    ON walkthrough_sessions(game_id);
+
+-- Each turn in a session. `role` ∈ {agent, user}. `kind` ∈ {instruction,
+-- question, confirm, answer, greeting, summary} (free-form text — the parser
+-- promotes from raw markers). turn_no is 0-indexed and monotonic.
+CREATE TABLE IF NOT EXISTS walkthrough_turns (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL REFERENCES walkthrough_sessions(session_id) ON DELETE CASCADE,
+    turn_no     INTEGER NOT NULL,
+    role        TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    UNIQUE (session_id, turn_no)
+);
+
+CREATE INDEX IF NOT EXISTS idx_walkthrough_turns_session
+    ON walkthrough_turns(session_id);

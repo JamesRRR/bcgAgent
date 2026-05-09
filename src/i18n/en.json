@@ -12,6 +12,7 @@
     "addGame": "Add Game",
     "rename": "Rename",
     "changeCover": "Change cover",
+    "delete": "Delete game",
     "renameDialog": {
       "title": "Rename Game",
       "confirm": "Save"
@@ -39,6 +40,13 @@
       "done": "Done",
       "failed": "Failed",
       "running": "Importing"
+    },
+    "bgg": {
+      "title": "Or pull rules from BoardGameGeek",
+      "intro": "Skip the photo step — fetch the official description and metadata directly.",
+      "placeholder": "Search BGG by game name…",
+      "search": "Search",
+      "use": "Use this"
     }
   },
   "handbook": {
@@ -46,6 +54,7 @@
     "toc": "Table of Contents",
     "searchPlaceholder": "Search this handbook…",
     "viewOriginal": "View original page",
+    "noOriginalImage": "No original image (BGG-imported)",
     "noContent": "No text available for this page",
     "illustrations": "Illustrations"
   },
@@ -56,7 +65,27 @@
     "regenerate": "Regenerate",
     "generating": "Generating",
     "pickGame": "Pick a rulebook first",
-    "errorHint": "Please set your MiniMax API key in Settings, and make sure the rulebook is imported (page count > 0 on the card)."
+    "errorHint": "Please set your MiniMax API key in Settings, and make sure the rulebook is imported (page count > 0 on the card).",
+    "voiceOn": "Read aloud",
+    "voiceOff": "Stop reading",
+    "session": {
+      "start": "Start coaching",
+      "starting": "Getting ready…",
+      "ready": "Done, next step",
+      "askInstead": "I have a question",
+      "askPlaceholder": "Ask anything — e.g. \"what does this card do?\"",
+      "send": "Send",
+      "cancel": "Cancel",
+      "reset": "Restart",
+      "thinking": "Coach is thinking…",
+      "phaseSetup": "Setup",
+      "phaseFirstRound": "First round",
+      "phaseMidgame": "In play",
+      "phaseEndgame": "Endgame",
+      "you": "You",
+      "coach": "Coach",
+      "showFullGuide": "Show full guide"
+    }
   },
   "ask": {
     "title": "Ask the Rules",
@@ -85,6 +114,14 @@
       "label": "TTS language",
       "zh": "Chinese",
       "en": "English"
+    },
+    "elevenlabs": {
+      "label": "Advanced voice (ElevenLabs)",
+      "intro": "Optional. Leave empty to use the system voice.",
+      "apiKey": "ElevenLabs API key",
+      "voiceId": "Voice ID",
+      "voiceIdPlaceholder": "EXAVITQu4vr4xnSDxMaL (default: Rachel)",
+      "useElevenLabs": "Use ElevenLabs for narration"
     },
     "retrieval": {
       "kLabel": "Retrieval top-K"

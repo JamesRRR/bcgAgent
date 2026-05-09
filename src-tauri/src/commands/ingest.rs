@@ -88,12 +88,7 @@ fn normalize_for_processing(src: &Path) -> AppResult<PathBuf> {
     Ok(dst)
 }
 
-fn copy_into_game(
-    src: &Path,
-    game_id: &str,
-    page_no: i64,
-    page_id: &str,
-) -> AppResult<PathBuf> {
+fn copy_into_game(src: &Path, game_id: &str, page_no: i64, page_id: &str) -> AppResult<PathBuf> {
     let dir = paths::games_dir().join(game_id).join("pages");
     std::fs::create_dir_all(&dir)?;
     let ext = ext_of(src);
@@ -341,14 +336,34 @@ pub async fn run_ingest(
         },
     );
 
-    // Pick a cover for the game (BGG → first-page thumbnail). Errors are
-    // swallowed: a missing cover never fails an import.
+    // Post-ingest knowledge enrichment. All errors swallowed: a missing
+    // cover or BGG outage never fails an import. Runs in the background so
+    // the user can navigate away as soon as `ingest:done` fires.
     if succeeded > 0 {
         let db = state.db.clone();
-        let game_id_for_cover = game_id.clone();
+        let game_id_bg = game_id.clone();
+        let sink_bg = sink.clone();
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = crate::cover::auto::auto_set_cover(&db, &game_id_for_cover).await {
-                tracing::warn!("auto_set_cover for {game_id_for_cover} failed: {e}");
+            if let Err(e) = crate::cover::auto::auto_set_cover(&db, &game_id_bg).await {
+                tracing::warn!("auto_set_cover for {game_id_bg} failed: {e}");
+            }
+            sink_emit(
+                &sink_bg,
+                "research:started",
+                &serde_json::json!({"game_id": game_id_bg}),
+            );
+            match crate::research::pipeline::run_for_game(&db, &game_id_bg).await {
+                Ok(summary) => {
+                    sink_emit(
+                        &sink_bg,
+                        "research:done",
+                        &serde_json::json!({
+                            "game_id": game_id_bg,
+                            "summary": summary,
+                        }),
+                    );
+                }
+                Err(e) => tracing::warn!("research pass for {game_id_bg} failed: {e}"),
             }
         });
     }
@@ -376,7 +391,11 @@ fn crop_and_save_illustrations(
     let img = match image::open(src_image) {
         Ok(i) => i,
         Err(e) => {
-            tracing::warn!("could not decode {} for cropping: {}", src_image.display(), e);
+            tracing::warn!(
+                "could not decode {} for cropping: {}",
+                src_image.display(),
+                e
+            );
             return Ok(());
         }
     };
@@ -408,6 +427,7 @@ fn crop_and_save_illustrations(
             &dst.to_string_lossy(),
             (x, y, x2, y2),
             ill.label.as_deref(),
+            Some(&ill.token),
         ) {
             tracing::warn!("insert illustration row failed: {}", e);
         }
@@ -444,8 +464,7 @@ mod tests {
         let jpeg = dir.path().join("source.jpg");
         let heic = dir.path().join("source.heic");
 
-        let img: ImageBuffer<Rgb<u8>, _> =
-            ImageBuffer::from_fn(64, 64, |_, _| Rgb([200, 85, 61]));
+        let img: ImageBuffer<Rgb<u8>, _> = ImageBuffer::from_fn(64, 64, |_, _| Rgb([200, 85, 61]));
         img.save(&jpeg).expect("write jpg");
 
         let s = std::process::Command::new("sips")

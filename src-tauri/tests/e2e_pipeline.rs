@@ -48,16 +48,19 @@ async fn ingest_then_ask_real_pipeline() {
         .expect("embed_batch failed");
     assert_eq!(chunk_vecs.len(), chunks.len());
     assert_eq!(chunk_vecs[0].len(), embed::dim(), "wrong embedding dim");
-    eprintln!("→ embedded {} chunks at {}-d", chunk_vecs.len(), embed::dim());
+    eprintln!(
+        "→ embedded {} chunks at {}-d",
+        chunk_vecs.len(),
+        embed::dim()
+    );
 
     // 4) Open in-memory DB and insert game/page/chunks with embeddings.
     eprintln!("[4/8] store: in-memory DB + insert chunks with embeddings");
     let db = Db::open_in_memory().expect("open in-memory db");
-    let game_id = store::games::insert_game(&db, "卡坦岛", Some("Catan"), None)
-        .expect("insert game");
+    let game_id =
+        store::games::insert_game(&db, "卡坦岛", Some("Catan"), None).expect("insert game");
     let page_id =
-        store::pages::insert_page(&db, &game_id, 1, "/tmp/page1.jpg", None)
-            .expect("insert page");
+        store::pages::insert_page(&db, &game_id, 1, "/tmp/page1.jpg", None).expect("insert page");
     for (chunk, vec) in chunks.iter().zip(chunk_vecs.iter()) {
         store::chunks::insert_chunk_with_embedding(
             &db,
@@ -84,15 +87,10 @@ async fn ingest_then_ask_real_pipeline() {
 
     // 6) Hybrid retrieval: vec_search + fts_search.
     eprintln!("[6/8] retrieve");
-    let vec_hits =
-        store::chunks::vec_search(&db, &q_vec, Some(&game_id), 20).expect("vec_search");
-    let fts_hits = store::chunks::fts_search(&db, question, Some(&game_id), 20)
-        .expect("fts_search");
-    eprintln!(
-        "vec_hits={}  fts_hits={}",
-        vec_hits.len(),
-        fts_hits.len()
-    );
+    let vec_hits = store::chunks::vec_search(&db, &q_vec, Some(&game_id), 20).expect("vec_search");
+    let fts_hits =
+        store::chunks::fts_search(&db, question, Some(&game_id), 20).expect("fts_search");
+    eprintln!("vec_hits={}  fts_hits={}", vec_hits.len(), fts_hits.len());
     let vec_ids: Vec<i64> = vec_hits.iter().map(|(id, _)| *id).collect();
     let fts_ids: Vec<i64> = fts_hits.iter().map(|(id, _)| *id).collect();
 
@@ -143,5 +141,9 @@ async fn ingest_then_ask_real_pipeline() {
     let grounded = ["强盗", "robber", "沙漠", "资源", "7", "七"]
         .iter()
         .any(|kw| lower.contains(&kw.to_lowercase()));
-    assert!(grounded, "answer doesn't reference source terms: {}", answer);
+    assert!(
+        grounded,
+        "answer doesn't reference source terms: {}",
+        answer
+    );
 }

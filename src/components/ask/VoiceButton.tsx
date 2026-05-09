@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { Mic, Square } from "lucide-react";
 import { audio } from "@/lib/ipc";
 import { useToaster } from "@/components/Toaster";
-import { blobToWav16k } from "./wav";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -13,73 +12,80 @@ type Props = {
 
 type State = "idle" | "recording" | "transcribing";
 
+/**
+ * Press-and-hold-to-record button.
+ *
+ * Backed by native cpal mic capture in Rust (not browser getUserMedia) so the
+ * app actually triggers the macOS TCC mic-permission prompt and shows up in
+ * System Settings → Privacy → Microphone. WKWebView denies getUserMedia
+ * silently, which is why the previous implementation always errored.
+ */
 export default function VoiceButton({ disabled, onTranscribed }: Props) {
   const toaster = useToaster();
-  const [state, setState] = useState<State>("idle");
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [state, setStateRaw] = useState<State>("idle");
+  const stateRef = useRef<State>("idle");
+  const setState = (s: State) => {
+    stateRef.current = s;
+    setStateRaw(s);
+  };
+  const sessionIdRef = useRef<string | null>(null);
 
-  // Stop / cleanup on unmount
+  // Subscribe to live partials so the button could expose them later if we
+  // wanted to. For now the Ask flow only uses the final transcript.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    audio
+      .onTranscribePartial(() => {
+        // No-op — Ask page surfaces final transcript only.
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, []);
+
+  // Cancel any active session if the component unmounts mid-record.
   useEffect(() => {
     return () => {
-      try {
-        recorderRef.current?.stop();
-      } catch {
-        /* noop */
-      }
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      const sid = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (sid) audio.micCaptureCancel(sid).catch(() => {});
     };
   }, []);
 
   const startRecording = async () => {
-    if (disabled || state !== "idle") return;
+    if (disabled || stateRef.current !== "idle") return;
+    const sessionId = crypto.randomUUID();
+    sessionIdRef.current = sessionId;
+    // Flip UI immediately so the user sees feedback. The backend command
+    // does a one-time whisper-model download (~1-2 min) on first use, and
+    // without this optimistic update the button looks frozen.
+    setState("recording");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const rec = new MediaRecorder(stream);
-      chunksRef.current = [];
-      rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      rec.onstop = async () => {
-        // Release mic
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-
-        const blob = new Blob(chunksRef.current, {
-          type: rec.mimeType || "audio/webm",
-        });
-        chunksRef.current = [];
-        if (blob.size === 0) {
-          setState("idle");
-          return;
-        }
-        setState("transcribing");
-        try {
-          const wav = await blobToWav16k(blob);
-          const text = await audio.transcribe(wav, "auto");
-          if (text.trim()) onTranscribed(text.trim());
-        } catch (err) {
-          toaster.push(String(err), "error");
-        } finally {
-          setState("idle");
-        }
-      };
-      recorderRef.current = rec;
-      rec.start();
-      setState("recording");
-    } catch {
-      toaster.push("麦克风权限被拒绝 / Microphone permission denied", "error");
+      await audio.micCaptureStart(sessionId, "auto");
+    } catch (err) {
+      sessionIdRef.current = null;
+      setState("idle");
+      toaster.push(String(err), "error");
     }
   };
 
-  const stopRecording = () => {
-    const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      rec.stop();
+  const stopRecording = async () => {
+    const sid = sessionIdRef.current;
+    sessionIdRef.current = null;
+    if (!sid) {
+      setState("idle");
+      return;
     }
-    recorderRef.current = null;
+    setState("transcribing");
+    try {
+      const text = await audio.micCaptureStop(sid);
+      if (text.trim()) onTranscribed(text.trim());
+    } catch (err) {
+      toaster.push(String(err), "error");
+    } finally {
+      setState("idle");
+    }
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -88,7 +94,7 @@ export default function VoiceButton({ disabled, onTranscribed }: Props) {
   };
 
   const handlePointerUp = () => {
-    if (state === "recording") stopRecording();
+    if (stateRef.current === "recording") void stopRecording();
   };
 
   return (

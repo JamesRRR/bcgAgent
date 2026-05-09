@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use std::time::Duration;
 
 const ENDPOINT: &str = "https://api.minimaxi.com/v1/text/chatcompletion_v2";
-const MODEL: &str = "MiniMax-M2";
+const MODEL: &str = "MiniMax-M2.7";
 
 static HTTP: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
@@ -65,18 +65,63 @@ where
     let key = minimax_key()?;
     let body = build_request_body(&messages);
 
+    let body_size = serde_json::to_vec(&body).map(|v| v.len()).unwrap_or(0);
+    tracing::debug!(
+        "minimax stream_chat: messages={} body_size={}",
+        messages.len(),
+        body_size
+    );
     let resp = HTTP
         .post(ENDPOINT)
         .bearer_auth(&key)
         .header("Content-Type", "application/json")
+        .header("Accept", "text/event-stream")
         .json(&body)
         .send()
         .await?;
 
     let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
         return Err(AppError::Llm(format!("status {}: {}", status, text)));
+    }
+
+    // MiniMax sometimes returns 200 with a non-SSE JSON body (e.g. on auth
+    // failure, quota exceeded, or invalid params). Detect this and surface
+    // the embedded error rather than silently producing 0 chars.
+    if !content_type.contains("event-stream") {
+        let text = resp.text().await.unwrap_or_default();
+        tracing::warn!(
+            "minimax returned non-SSE body (content-type={}): {}",
+            content_type,
+            text
+        );
+        // Try to parse a base_resp shape and surface its message.
+        #[derive(serde::Deserialize)]
+        struct MiniErr {
+            base_resp: Option<BaseResp>,
+        }
+        if let Ok(err) = serde_json::from_str::<MiniErr>(&text) {
+            if let Some(b) = err.base_resp {
+                if b.status_code != 0 {
+                    return Err(AppError::Llm(format!(
+                        "minimax {}: {}",
+                        b.status_code, b.status_msg
+                    )));
+                }
+            }
+        }
+        return Err(AppError::Llm(format!(
+            "minimax returned non-streaming body: {}",
+            text.chars().take(300).collect::<String>()
+        )));
     }
 
     let mut buf = String::new();
@@ -133,8 +178,14 @@ mod tests {
     #[test]
     fn build_request_body_shape() {
         let msgs = vec![
-            Message { role: "system".into(), content: "sys".into() },
-            Message { role: "user".into(), content: "hi".into() },
+            Message {
+                role: "system".into(),
+                content: "sys".into(),
+            },
+            Message {
+                role: "user".into(),
+                content: "hi".into(),
+            },
         ];
         let body = build_request_body(&msgs);
         assert_eq!(body["model"], MODEL);

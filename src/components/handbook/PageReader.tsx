@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import type { Page } from "@/lib/ipc";
-import MarkdownView from "./MarkdownView";
+import PageArticle from "./PageArticle";
 
 export type PageReaderHandle = {
   scrollToPage: (pageNumber: number) => void;
@@ -17,7 +16,6 @@ const PageReader = forwardRef<PageReaderHandle, Props>(function PageReader(
   { pages, highlight, onActivePageChange },
   ref,
 ) {
-  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -90,35 +88,12 @@ const PageReader = forwardRef<PageReaderHandle, Props>(function PageReader(
     <div ref={containerRef} className="flex-1 overflow-y-auto bg-cream/30">
       <div className="max-w-3xl mx-auto px-8 py-8 space-y-8">
         {pages.map((p) => (
-          <article
+          <PageArticle
             key={p.id}
-            id={`page-${p.page_number}`}
-            data-page-number={p.page_number}
-            className="rounded-md bg-paper p-8 shadow-sm border-t-4 scroll-mt-6"
-            style={{ borderTopColor: "var(--accent, #C8553D)" }}
-          >
-            <header className="mb-4 flex items-baseline justify-between">
-              <span className="font-handwritten text-3xl text-ink/40">
-                p. {p.page_number}
-              </span>
-              {p.ocr_status !== "done" && (
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    p.ocr_status === "failed"
-                      ? "bg-accent/15 text-accent"
-                      : "bg-cream text-ink/60"
-                  }`}
-                >
-                  {p.ocr_status === "failed" ? "OCR 失败" : "OCR 中…"}
-                </span>
-              )}
-            </header>
-            {p.ocr_status === "done" && p.ocr_markdown ? (
-              <MarkdownView source={p.ocr_markdown} highlight={highlight} />
-            ) : (
-              <p className="text-ink/40 italic">{t("handbook.noContent")}</p>
-            )}
-          </article>
+            page={p}
+            highlight={highlight}
+            externalSource={p.ocr_status === "external"}
+          />
         ))}
       </div>
     </div>

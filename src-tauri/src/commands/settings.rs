@@ -25,11 +25,7 @@ pub async fn settings_get(state: State<'_, AppState>, key: String) -> AppResult<
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub async fn settings_set(
-    state: State<'_, AppState>,
-    key: String,
-    value: String,
-) -> AppResult<()> {
+pub async fn settings_set(state: State<'_, AppState>, key: String, value: String) -> AppResult<()> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || store_settings::set(&db, &key, &value))
         .await

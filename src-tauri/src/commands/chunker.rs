@@ -13,10 +13,7 @@ const MAX_CHARS: usize = 800;
 const TARGET_CHARS: usize = 400;
 
 fn join_heading(h1: &Option<String>, h2: &Option<String>, h3: &Option<String>) -> Option<String> {
-    let parts: Vec<&str> = [h1, h2, h3]
-        .iter()
-        .filter_map(|h| h.as_deref())
-        .collect();
+    let parts: Vec<&str> = [h1, h2, h3].iter().filter_map(|h| h.as_deref()).collect();
     if parts.is_empty() {
         None
     } else {
@@ -55,11 +52,7 @@ fn split_long(content: &str) -> Vec<String> {
     out
 }
 
-fn flush(
-    chunks: &mut Vec<Chunk>,
-    heading: &Option<String>,
-    paragraph: &mut String,
-) {
+fn flush(chunks: &mut Vec<Chunk>, heading: &Option<String>, paragraph: &mut String) {
     let text = paragraph.trim().to_string();
     paragraph.clear();
     if text.is_empty() {

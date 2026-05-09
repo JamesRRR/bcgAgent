@@ -11,6 +11,8 @@ import { getVersion } from "@tauri-apps/api/app";
 const THEME_KEY = "theme";
 const TTS_LANG_KEY = "tts_lang";
 const RETRIEVAL_K_KEY = "retrieval_k";
+const TTS_PROVIDER_KEY = "tts_provider";
+const TTS_EL_VOICE_ID_KEY = "tts_elevenlabs_voice_id";
 
 type SecretState = { initial: string; current: string };
 
@@ -33,6 +35,15 @@ export default function Settings() {
   const [retrievalK, setRetrievalK] = useState<number>(8);
   const [kError, setKError] = useState<string | null>(null);
 
+  const [elevenKey, setElevenKey] = useState<SecretState>({
+    initial: "",
+    current: "",
+  });
+  const [elevenVoiceId, setElevenVoiceId] = useState<string>("");
+  const [elevenVoiceIdInitial, setElevenVoiceIdInitial] = useState<string>("");
+  type ProviderMode = "" | "elevenlabs" | "system";
+  const [providerMode, setProviderMode] = useState<ProviderMode>("");
+
   const [dark, setDark] = useState<boolean>(
     () => document.documentElement.classList.contains("dark"),
   );
@@ -45,8 +56,11 @@ export default function Settings() {
       settings.getSecret("minimax"),
       settings.get(TTS_LANG_KEY),
       settings.get(RETRIEVAL_K_KEY),
+      settings.getSecret("elevenlabs"),
+      settings.get(TTS_PROVIDER_KEY),
+      settings.get(TTS_EL_VOICE_ID_KEY),
     ])
-      .then(([ds, mm, lang, k]) => {
+      .then(([ds, mm, lang, k, el, prov, vid]) => {
         if (cancelled) return;
         const dsVal = ds ?? "";
         const mmVal = mm ?? "";
@@ -57,6 +71,14 @@ export default function Settings() {
           const n = parseInt(k, 10);
           if (!Number.isNaN(n) && n >= 4 && n <= 16) setRetrievalK(n);
         }
+        const elVal = el ?? "";
+        setElevenKey({ initial: elVal, current: elVal });
+        const vidVal = vid ?? "";
+        setElevenVoiceId(vidVal);
+        setElevenVoiceIdInitial(vidVal);
+        const provNorm: ProviderMode =
+          prov === "elevenlabs" || prov === "system" ? prov : "";
+        setProviderMode(provNorm);
       })
       .catch((e) => toaster.push(String(e), "error"));
     return () => {
@@ -66,7 +88,9 @@ export default function Settings() {
 
   const dsDirty = dashscope.current !== dashscope.initial;
   const mmDirty = minimax.current !== minimax.initial;
-  const keysDirty = dsDirty || mmDirty;
+  const elDirty = elevenKey.current !== elevenKey.initial;
+  const elVidDirty = elevenVoiceId !== elevenVoiceIdInitial;
+  const keysDirty = dsDirty || mmDirty || elDirty || elVidDirty;
 
   const handleSaveKeys = async () => {
     setSavingKeys(true);
@@ -75,9 +99,15 @@ export default function Settings() {
       if (dsDirty)
         ops.push(settings.setSecret("dashscope", dashscope.current));
       if (mmDirty) ops.push(settings.setSecret("minimax", minimax.current));
+      if (elDirty)
+        ops.push(settings.setSecret("elevenlabs", elevenKey.current));
+      if (elVidDirty)
+        ops.push(settings.set(TTS_EL_VOICE_ID_KEY, elevenVoiceId));
       await Promise.all(ops);
       setDashscope((s) => ({ initial: s.current, current: s.current }));
       setMinimax((s) => ({ initial: s.current, current: s.current }));
+      setElevenKey((s) => ({ initial: s.current, current: s.current }));
+      setElevenVoiceIdInitial(elevenVoiceId);
       toaster.push(isZh ? "已保存" : "Saved", "success");
     } catch (e) {
       toaster.push(String(e), "error");
@@ -85,6 +115,31 @@ export default function Settings() {
       setSavingKeys(false);
     }
   };
+
+  const handleProviderChange = async (next: ProviderMode) => {
+    setProviderMode(next);
+    try {
+      await settings.set(TTS_PROVIDER_KEY, next);
+    } catch (e) {
+      toaster.push(String(e), "error");
+    }
+  };
+
+  const activeLabel = ((): string => {
+    const hasKey = !!elevenKey.initial;
+    if (providerMode === "system") {
+      return isZh ? "系统语音 (say)" : "System (say)";
+    }
+    if (providerMode === "elevenlabs") {
+      return hasKey
+        ? isZh ? "ElevenLabs（你的克隆音色）" : "ElevenLabs (your cloned voice)"
+        : isZh ? "系统语音 (say) — 因密钥缺失自动回退" : "System (say) — fallback (no key)";
+    }
+    // Auto
+    return hasKey
+      ? isZh ? "ElevenLabs（你的克隆音色，自动）" : "ElevenLabs (your cloned voice, auto)"
+      : isZh ? "系统语音 (say)" : "System (say)";
+  })();
 
   const handleTtsLangChange = async (lang: "zh" | "en") => {
     setTtsLang(lang);
@@ -178,6 +233,59 @@ export default function Settings() {
               {t(`settings.voice.${lang}`)}
             </label>
           ))}
+        </div>
+      </Section>
+
+      <Section title={t("settings.elevenlabs.label")}>
+        <p className="text-xs text-ink/50 dark:text-cream/50 mb-2">
+          {t("settings.elevenlabs.intro")}
+        </p>
+        <SecretField
+          label={t("settings.elevenlabs.apiKey")}
+          value={elevenKey.current}
+          saved={!!elevenKey.initial && !elDirty}
+          dirty={elDirty}
+          onChange={(v) => setElevenKey((s) => ({ ...s, current: v }))}
+          helperText={emptyHelp}
+          savedLabel={savedLabel}
+          unsavedLabel={unsavedLabel}
+        />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm text-ink/70 dark:text-cream/70">
+            {t("settings.elevenlabs.voiceId")}
+          </label>
+          <input
+            type="text"
+            value={elevenVoiceId}
+            onChange={(e) => setElevenVoiceId(e.target.value)}
+            placeholder={t("settings.elevenlabs.voiceIdPlaceholder")}
+            className="w-full rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent dark:bg-[var(--paper)] dark:text-cream dark:border-cream/15"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5 pt-2">
+          <label className="text-sm text-ink/70 dark:text-cream/70">
+            {isZh ? "TTS 模式" : "TTS mode"}
+          </label>
+          <select
+            value={providerMode}
+            onChange={(e) =>
+              handleProviderChange(e.target.value as ProviderMode)
+            }
+            className="w-full rounded-md border border-ink/15 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-accent dark:bg-[var(--paper)] dark:text-cream dark:border-cream/15"
+          >
+            <option value="">
+              {isZh ? "自动（有密钥则用 ElevenLabs）" : "Auto (use ElevenLabs if key set)"}
+            </option>
+            <option value="elevenlabs">
+              {isZh ? "强制 ElevenLabs" : "Force ElevenLabs"}
+            </option>
+            <option value="system">
+              {isZh ? "强制系统语音 (say)" : "Force system voice (say)"}
+            </option>
+          </select>
+          <p className="text-xs text-ink/40 dark:text-cream/40">
+            {isZh ? "当前：" : "Active: "}{activeLabel}
+          </p>
         </div>
       </Section>
 

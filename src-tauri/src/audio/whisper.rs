@@ -59,6 +59,18 @@ pub async fn ensure_model() -> AppResult<()> {
     Ok(())
 }
 
+/// Run whisper-cli on a WAV path. Synchronous; call from a blocking task.
+/// Skips the model-download check — caller is responsible for it.
+pub fn transcribe_blocking(wav_path: &Path, language_hint: &str) -> AppResult<String> {
+    let model_path = paths::whisper_model_path();
+    if !model_path.exists() {
+        return Err(AppError::Audio(
+            "whisper model not yet downloaded — wait for warmup or fall back".into(),
+        ));
+    }
+    run_whisper_cli(&model_path, wav_path, language_hint)
+}
+
 /// Transcribe a 16kHz mono WAV file to text. Returns the transcript.
 /// `language_hint` is "auto" | "zh" | "en"; passed to whisper-cli's `-l`.
 pub async fn transcribe(wav_path: &Path, language_hint: &str) -> AppResult<String> {
@@ -74,8 +86,19 @@ pub async fn transcribe(wav_path: &Path, language_hint: &str) -> AppResult<Strin
 }
 
 fn run_whisper_cli(model: &Path, wav: &Path, lang: &str) -> AppResult<String> {
-    let tmp = tempfile::TempDir::new()?;
-    let out_prefix = tmp.path().join("out");
+    // Avoid `tempfile::TempDir::new()` because `$TMPDIR` may point at a
+    // sandbox-managed dir that gets cleaned up under us (e.g. context-mode's
+    // .ctx-mode-XXX). Write output next to the input WAV in our app dir.
+    let parent = wav
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| paths::app_data_dir());
+    let stem = wav
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("out")
+        .to_string();
+    let out_prefix = parent.join(format!("{stem}-out"));
 
     let spawn_result = Command::new("whisper-cli")
         .arg("-m")
@@ -108,6 +131,7 @@ fn run_whisper_cli(model: &Path, wav: &Path, lang: &str) -> AppResult<String> {
 
     let txt_path = out_prefix.with_extension("txt");
     let text = std::fs::read_to_string(&txt_path)?;
+    let _ = std::fs::remove_file(&txt_path);
     Ok(text.trim().to_string())
 }
 

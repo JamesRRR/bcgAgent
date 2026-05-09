@@ -12,6 +12,7 @@
     "addGame": "添加桌游",
     "rename": "重命名",
     "changeCover": "更换封面",
+    "delete": "删除桌游",
     "renameDialog": {
       "title": "重命名桌游",
       "confirm": "保存"
@@ -39,6 +40,13 @@
       "done": "已完成",
       "failed": "失败",
       "running": "导入中"
+    },
+    "bgg": {
+      "title": "或从 BGG 直接拉取规则",
+      "intro": "免去拍照——直接从 BoardGameGeek 抓官方描述与元信息。",
+      "placeholder": "按桌游名搜 BGG…",
+      "search": "搜索",
+      "use": "用这个"
     }
   },
   "handbook": {
@@ -46,6 +54,7 @@
     "toc": "目录",
     "searchPlaceholder": "搜索规则书…",
     "viewOriginal": "查看原页",
+    "noOriginalImage": "（来自 BGG，无原页图）",
     "noContent": "本页暂无可用文字",
     "illustrations": "插图"
   },
@@ -56,7 +65,27 @@
     "regenerate": "重新生成",
     "generating": "生成中",
     "pickGame": "先选一本规则书",
-    "errorHint": "请先在「设置」里填写 MiniMax API Key，并确保规则书已成功导入（书架卡片显示页数 > 0）。"
+    "errorHint": "请先在「设置」里填写 MiniMax API Key，并确保规则书已成功导入（书架卡片显示页数 > 0）。",
+    "voiceOn": "开启语音朗读",
+    "voiceOff": "关闭语音朗读",
+    "session": {
+      "start": "开始带玩",
+      "starting": "正在准备…",
+      "ready": "好了，下一步",
+      "askInstead": "我有问题",
+      "askPlaceholder": "随便问，例如「这张卡是什么意思？」",
+      "send": "发送",
+      "cancel": "取消",
+      "reset": "重新开始",
+      "thinking": "教练思考中…",
+      "phaseSetup": "准备阶段",
+      "phaseFirstRound": "第一回合",
+      "phaseMidgame": "游戏进行",
+      "phaseEndgame": "结算",
+      "you": "我",
+      "coach": "教练",
+      "showFullGuide": "看完整教程"
+    }
   },
   "ask": {
     "title": "问规则",
@@ -85,6 +114,14 @@
       "label": "朗读语言",
       "zh": "中文",
       "en": "English"
+    },
+    "elevenlabs": {
+      "label": "高级语音 (ElevenLabs)",
+      "intro": "可选。留空则使用系统自带语音。",
+      "apiKey": "ElevenLabs API Key",
+      "voiceId": "Voice ID",
+      "voiceIdPlaceholder": "EXAVITQu4vr4xnSDxMaL（默认 Rachel）",
+      "useElevenLabs": "使用 ElevenLabs 朗读"
     },
     "retrieval": {
       "kLabel": "检索条数 K"

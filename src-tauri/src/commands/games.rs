@@ -52,10 +52,7 @@ pub async fn game_set_cover(
 /// Run the auto-cover pipeline (BGG → first-page thumbnail). Idempotent:
 /// no-op if the game already has a `cover_path`. Errors are logged, not surfaced.
 #[tauri::command(rename_all = "snake_case")]
-pub async fn game_auto_set_cover(
-    state: State<'_, AppState>,
-    game_id: String,
-) -> AppResult<()> {
+pub async fn game_auto_set_cover(state: State<'_, AppState>, game_id: String) -> AppResult<()> {
     let db = state.db.clone();
     cover::auto::auto_set_cover(&db, &game_id).await
 }
@@ -68,11 +65,9 @@ pub async fn game_set_cover_from_file(
     src_path: String,
 ) -> AppResult<String> {
     let db = state.db.clone();
-    tokio::task::spawn_blocking(move || {
-        cover::auto::set_cover_from_file(&db, &game_id, &src_path)
-    })
-    .await
-    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+    tokio::task::spawn_blocking(move || cover::auto::set_cover_from_file(&db, &game_id, &src_path))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -83,9 +78,28 @@ pub async fn game_rename(
     name_en: Option<String>,
 ) -> AppResult<()> {
     let db = state.db.clone();
-    tokio::task::spawn_blocking(move || {
-        games::update_name(&db, &id, &name_zh, name_en.as_deref())
-    })
-    .await
-    .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+    tokio::task::spawn_blocking(move || games::update_name(&db, &id, &name_zh, name_en.as_deref()))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))?
+}
+
+/// Permanently delete a game: DB rows (cascade) + on-disk
+/// `games/<id>/` directory containing pages, thumbs, illustrations, cover.
+/// Idempotent: deleting a non-existent game is a no-op.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn game_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let db = state.db.clone();
+    let id_for_db = id.clone();
+    tokio::task::spawn_blocking(move || games::delete_game(&db, &id_for_db))
+        .await
+        .map_err(|e| AppError::Other(anyhow::anyhow!("join: {e}")))??;
+    // Best-effort wipe of on-disk game folder. Failure here is logged but
+    // non-fatal — DB has already been cleaned.
+    let dir = crate::paths::games_dir().join(&id);
+    if dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            tracing::warn!("game_delete: failed to remove {}: {e}", dir.display());
+        }
+    }
+    Ok(())
 }

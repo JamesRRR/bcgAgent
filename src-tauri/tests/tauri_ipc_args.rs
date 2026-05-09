@@ -11,12 +11,10 @@
 //! representative parameterized commands. If any are missing the
 //! snake_case attribute, the assertion fails immediately.
 
-use bcgagent_lib::commands::{games, pages, search};
 use bcgagent_lib::commands::AppState;
+use bcgagent_lib::commands::{games, pages, search};
 use bcgagent_lib::store::Db;
-use tauri::test::{
-    get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY,
-};
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
 

@@ -46,6 +46,10 @@ vi.mock("@/lib/ipc", () => {
       transcribe: vi.fn(),
       speak: vi.fn(() => Promise.resolve("tts-handle")),
       speakCancel: vi.fn(() => Promise.resolve()),
+      micCaptureStart: vi.fn(() => Promise.resolve()),
+      micCaptureStop: vi.fn(() => Promise.resolve("")),
+      micCaptureCancel: vi.fn(() => Promise.resolve()),
+      onTranscribePartial: vi.fn(() => Promise.resolve(() => {})),
     },
     settings: {
       getSecret: vi.fn(),
@@ -57,57 +61,21 @@ vi.mock("@/lib/ipc", () => {
   };
 });
 
-// Stub the WAV encoder so we don't need a real AudioContext in jsdom.
-vi.mock("@/components/ask/wav", () => ({
-  blobToWav16k: vi.fn(async () => new Uint8Array([82, 73, 70, 70])), // "RIFF"
-}));
-
 import Ask from "@/pages/Ask";
 import { ask as askIpc, audio } from "@/lib/ipc";
-
-// MediaRecorder + getUserMedia stubs
-class FakeMediaRecorder {
-  state: "inactive" | "recording" | "paused" = "inactive";
-  ondataavailable: ((e: { data: Blob }) => void) | null = null;
-  onstop: (() => void) | null = null;
-  mimeType = "audio/webm";
-
-  constructor(_stream: MediaStream) {}
-
-  start() {
-    this.state = "recording";
-  }
-  stop() {
-    this.state = "inactive";
-    this.ondataavailable?.({ data: new Blob(["fake-audio"]) });
-    this.onstop?.();
-  }
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
   subs.citations = [];
   subs.token = [];
   subs.done = [];
-
-  // @ts-expect-error stub
-  global.MediaRecorder = FakeMediaRecorder;
-
-  Object.defineProperty(navigator, "mediaDevices", {
-    configurable: true,
-    value: {
-      getUserMedia: vi.fn(async () => ({
-        getTracks: () => [{ stop: vi.fn() }],
-      })),
-    },
-  });
 });
 
 describe("Voice flow", () => {
   it("hold-to-record → release → transcribe → input fills → auto-submit ask", async () => {
     const user = userEvent.setup();
 
-    vi.mocked(audio.transcribe).mockResolvedValueOnce("强盗怎么移动？");
+    vi.mocked(audio.micCaptureStop).mockResolvedValueOnce("强盗怎么移动？");
 
     render(
       <Wrapper>
@@ -117,35 +85,28 @@ describe("Voice flow", () => {
 
     const micBtn = await screen.findByRole("button", { name: /record/i });
 
-    // pointerDown → starts MediaRecorder
+    // pointerDown → starts native cpal capture
     await user.pointer({ keys: "[MouseLeft>]", target: micBtn });
-    await waitFor(() =>
-      expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled(),
-    );
-
-    // pointerUp → stops recorder, triggers transcribe + auto-submit
-    await user.pointer({ keys: "[/MouseLeft]" });
-
     await waitFor(() => {
-      expect(audio.transcribe).toHaveBeenCalled();
+      expect(audio.micCaptureStart).toHaveBeenCalled();
     });
 
+    // pointerUp → stops capture, returns transcript, auto-submits
+    await user.pointer({ keys: "[/MouseLeft]" });
+    await waitFor(() => {
+      expect(audio.micCaptureStop).toHaveBeenCalled();
+    });
     await waitFor(() => {
       expect(askIpc.run).toHaveBeenCalledWith("强盗怎么移动？", null);
     });
   });
 
-  it("toaster surfaces denied microphone permission", async () => {
+  it("toaster surfaces backend mic-capture errors", async () => {
     const user = userEvent.setup();
 
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: {
-        getUserMedia: vi.fn(async () => {
-          throw new DOMException("denied", "NotAllowedError");
-        }),
-      },
-    });
+    vi.mocked(audio.micCaptureStart).mockRejectedValueOnce(
+      "audio: no default input device",
+    );
 
     render(
       <Wrapper>
@@ -155,10 +116,9 @@ describe("Voice flow", () => {
 
     const micBtn = await screen.findByRole("button", { name: /record/i });
     await user.pointer({ keys: "[MouseLeft>]", target: micBtn });
-    await user.pointer({ keys: "[/MouseLeft]" });
 
     expect(
-      await screen.findByText(/麦克风权限被拒绝|Microphone permission denied/i),
+      await screen.findByText(/no default input device/i),
     ).toBeInTheDocument();
   });
 });

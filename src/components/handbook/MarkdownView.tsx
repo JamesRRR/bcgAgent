@@ -1,11 +1,22 @@
 import { Image as ImageIcon } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { inTauri } from "@/lib/transport";
+
+/** Map from illustration token (e.g. "ill:0") to on-disk crop path. */
+export type IllustrationMap = Record<
+  string,
+  { image_path: string; label: string | null }
+>;
 
 type Props = {
   source: string;
   highlight?: string;
+  /** When provided, markdown `![label](ill:N)` images render as the actual
+   *  cropped illustration figures instead of placeholder badges. */
+  illustrations?: IllustrationMap;
 };
 
 function highlightText(text: string, query: string): ReactNode {
@@ -45,10 +56,19 @@ function withHighlight(
   return children;
 }
 
-export default function MarkdownView({ source, highlight }: Props) {
+export default function MarkdownView({
+  source,
+  highlight,
+  illustrations,
+}: Props) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
+      // The default urlTransform sanitizes anything that isn't http(s)/data/
+      // mailto/tel — which strips our `ill:N` anchors. Pass them through.
+      urlTransform={(url) =>
+        url.startsWith("ill:") ? url : defaultUrlTransform(url)
+      }
       components={{
         h1: ({ children }: ComponentPropsWithoutRef<"h1">) => (
           <h1 className="text-3xl font-bold mt-8 mb-3 text-ink">
@@ -117,12 +137,46 @@ export default function MarkdownView({ source, highlight }: Props) {
             {withHighlight(children, highlight)}
           </a>
         ),
-        img: ({ alt }: ComponentPropsWithoutRef<"img">) => (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-cream rounded text-xs align-middle mx-0.5">
-            <ImageIcon className="w-3 h-3" />
-            {alt ?? ""}
-          </span>
-        ),
+        img: ({ alt, src }: ComponentPropsWithoutRef<"img">) => {
+          const srcStr = typeof src === "string" ? src : "";
+          // Token-anchored illustration → render the real cropped figure
+          // when we have it, otherwise fall through to the placeholder.
+          if (srcStr.startsWith("ill:") && illustrations) {
+            const ill = illustrations[srcStr];
+            if (ill && ill.image_path) {
+              const url = inTauri ? convertFileSrc(ill.image_path) : "";
+              const caption = ill.label ?? alt ?? "";
+              // We have to render inline-eligible markup because remark may
+              // have wrapped this image inside a <p>. A <span> with role
+              // figure keeps semantics without nesting block-level elements.
+              return (
+                <span
+                  role="figure"
+                  className="block my-3 rounded-md overflow-hidden border border-ink/10 bg-paper"
+                >
+                  <img
+                    src={url}
+                    alt={alt ?? ill.label ?? "illustration"}
+                    className="w-full h-auto block"
+                    loading="lazy"
+                    draggable={false}
+                  />
+                  {caption && (
+                    <span className="block px-2 py-1 text-xs text-ink/60 bg-cream/40">
+                      {caption}
+                    </span>
+                  )}
+                </span>
+              );
+            }
+          }
+          return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-cream rounded text-xs align-middle mx-0.5">
+              <ImageIcon className="w-3 h-3" />
+              {alt ?? ""}
+            </span>
+          );
+        },
         hr: () => <hr className="my-6 border-ink/10" />,
       }}
     >

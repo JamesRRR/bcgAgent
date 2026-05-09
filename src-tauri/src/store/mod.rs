@@ -9,11 +9,14 @@ pub mod jieba;
 pub mod models;
 
 pub mod chunks;
+pub mod external_refs;
 pub mod games;
 pub mod illustrations;
 pub mod pages;
 pub mod qa;
 pub mod settings;
+pub mod walkthrough_sessions;
+pub mod walkthroughs;
 
 pub use db::Db;
 pub use models::{Chunk, Game, Page, QAHistory};
@@ -48,7 +51,13 @@ mod tests {
         let high = synthetic_embedding(0.9);
 
         let c_low = chunks::insert_chunk_with_embedding(
-            &db, &p1, &game_id, Some("rules"), "low embedding chunk", 4, &low,
+            &db,
+            &p1,
+            &game_id,
+            Some("rules"),
+            "low embedding chunk",
+            4,
+            &low,
         )
         .unwrap();
         let c_high = chunks::insert_chunk_with_embedding(

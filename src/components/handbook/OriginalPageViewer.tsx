@@ -54,12 +54,17 @@ export default function OriginalPageViewer({ page }: Props) {
     );
   }
 
+  // BGG-imported pages have no original image — render a placeholder rather
+  // than a broken thumb.
+  const hasImage = !!page.image_path && page.image_path.length > 0;
+
   // `convertFileSrc` only works inside the Tauri shell; in browser/E2E we
   // can't read arbitrary local paths so we just leave the image src empty.
-  const thumbSrc = inTauri
-    ? convertFileSrc(page.thumb_path || page.image_path)
-    : "";
-  const fullSrc = inTauri ? convertFileSrc(page.image_path) : "";
+  const thumbSrc =
+    hasImage && inTauri
+      ? convertFileSrc(page.thumb_path || page.image_path)
+      : "";
+  const fullSrc = hasImage && inTauri ? convertFileSrc(page.image_path) : "";
 
   return (
     <>
@@ -67,24 +72,30 @@ export default function OriginalPageViewer({ page }: Props) {
         <div className="p-4 sticky top-0">
           <div className="text-xs text-ink/50 mb-2 flex items-center justify-between">
             <span>p. {page.page_number}</span>
-            <span>{t("handbook.viewOriginal")}</span>
+            {hasImage && <span>{t("handbook.viewOriginal")}</span>}
           </div>
-          <button
-            type="button"
-            onClick={() => setZoomed({ src: fullSrc })}
-            className="group relative w-full rounded-md overflow-hidden border border-ink/10 bg-paper hover:border-accent/40 transition-colors"
-            aria-label={t("handbook.viewOriginal")}
-          >
-            <img
-              src={thumbSrc}
-              alt={`page ${page.page_number}`}
-              className="w-full h-auto block"
-              draggable={false}
-            />
-            <span className="absolute inset-0 flex items-center justify-center bg-ink/0 group-hover:bg-ink/30 transition-colors">
-              <ZoomIn className="w-6 h-6 text-cream opacity-0 group-hover:opacity-100 transition-opacity" />
-            </span>
-          </button>
+          {hasImage ? (
+            <button
+              type="button"
+              onClick={() => setZoomed({ src: fullSrc })}
+              className="group relative w-full rounded-md overflow-hidden border border-ink/10 bg-paper hover:border-accent/40 transition-colors"
+              aria-label={t("handbook.viewOriginal")}
+            >
+              <img
+                src={thumbSrc}
+                alt={`page ${page.page_number}`}
+                className="w-full h-auto block"
+                draggable={false}
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-ink/0 group-hover:bg-ink/30 transition-colors">
+                <ZoomIn className="w-6 h-6 text-cream opacity-0 group-hover:opacity-100 transition-opacity" />
+              </span>
+            </button>
+          ) : (
+            <div className="rounded-md border border-dashed border-ink/15 bg-paper/40 p-3 text-xs text-ink/50 text-center">
+              {t("handbook.noOriginalImage")}
+            </div>
+          )}
 
           {illustrations.length > 0 && (
             <div className="mt-4">
