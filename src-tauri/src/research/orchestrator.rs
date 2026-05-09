@@ -12,9 +12,9 @@
 //! 5. Chunk + embed + insert each fetched page with provenance.
 //! 6. Record a `research_events` row with the serialized hits + count.
 //!
-//! Wave 3 will translate to Chinese; for now we store the raw English
-//! markdown in `content` (so retrieval works in the interim) and again in
-//! `content_orig` so Wave 3 has the original to translate against.
+//! Wave 3: fetched English content is translated to Chinese before chunking
+//! (canonical retrieval language is Chinese). Original English is retained
+//! in `content_orig` for audit / re-translation.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -28,6 +28,7 @@ use super::connectors::url_fetch::UrlFetchConnector;
 use super::connectors::{GameCtx, ResearchConnector, ResearchHit};
 use crate::commands::chunker;
 use crate::error::{AppError, AppResult};
+use crate::llm::translate::{self, TranslateRequest};
 use crate::store::{
     chunks as store_chunks, pages as store_pages, research as store_research, Db,
 };
@@ -64,12 +65,22 @@ pub struct ResearchOutcome {
 /// stand-in instead of loading BGE-M3.
 pub type EmbedFn = Arc<dyn Fn(&[String]) -> AppResult<Vec<Vec<f32>>> + Send + Sync>;
 
+/// Async translation hook (Wave 3). Tests inject a canned passthrough so
+/// no MiniMax call is required. Production wires it to
+/// `translate::translate_to_chinese`.
+pub type TranslateFn = Arc<
+    dyn Fn(String) -> std::pin::Pin<Box<dyn std::future::Future<Output = AppResult<String>> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// Internal config knob: connectors + embed fn + url fetcher (so tests can
 /// stub the network layer without dragging in real HTTP).
 pub struct OrchestratorDeps {
     pub connectors: Vec<Arc<dyn ResearchConnector>>,
     pub url_fetch: Arc<UrlFetchConnector>,
     pub embed_fn: EmbedFn,
+    pub translate_fn: TranslateFn,
 }
 
 impl OrchestratorDeps {
@@ -82,10 +93,21 @@ impl OrchestratorDeps {
             as Arc<dyn ResearchConnector>;
         let url_fetch = Arc::new(UrlFetchConnector::new(db));
         let embed_fn: EmbedFn = Arc::new(|texts: &[String]| crate::embed::embed_batch(texts));
+        let translate_fn: TranslateFn = Arc::new(|text: String| {
+            Box::pin(async move {
+                translate::translate_to_chinese(TranslateRequest {
+                    text: &text,
+                    source_lang_hint: None,
+                    domain: Some("桌游规则"),
+                })
+                .await
+            })
+        });
         Ok(Self {
             connectors: vec![bgg, brave],
             url_fetch,
             embed_fn,
+            translate_fn,
         })
     }
 }
@@ -242,12 +264,25 @@ pub async fn run_research(
         };
         if let Some(anchor) = pages.first().map(|p| p.id.clone()) {
             for (hit, md) in pages_to_ingest {
-                let chunks = chunker::chunk_markdown(&md);
-                if chunks.is_empty() {
+                // Wave 3: translate the fetched English markdown to Chinese
+                // BEFORE chunking. Failures fall back to the original text so
+                // a flaky LLM never costs us a chunk; retrieval will just be
+                // weaker on that hit until the next pass.
+                let translated = match (deps.translate_fn)(md.clone()).await {
+                    Ok(zh) if !zh.trim().is_empty() => zh,
+                    Ok(_) => md.clone(),
+                    Err(e) => {
+                        tracing::warn!("research translate failed: {e}; using original");
+                        md.clone()
+                    }
+                };
+                let chunks_zh = chunker::chunk_markdown(&translated);
+                let chunks_en = chunker::chunk_markdown(&md);
+                if chunks_zh.is_empty() {
                     continue;
                 }
                 let texts: Vec<String> =
-                    chunks.iter().map(|c| c.content.clone()).collect();
+                    chunks_zh.iter().map(|c| c.content.clone()).collect();
                 let embeds = (deps.embed_fn)(&texts)?;
                 if embeds.len() != texts.len() {
                     return Err(AppError::Other(anyhow::anyhow!(
@@ -256,7 +291,11 @@ pub async fn run_research(
                         texts.len()
                     )));
                 }
-                for (chunk, vec) in chunks.iter().zip(embeds.iter()) {
+                for (i, (chunk, vec)) in chunks_zh.iter().zip(embeds.iter()).enumerate() {
+                    // Best-effort pairing: same index in the English chunk
+                    // list. If lengths differ (translation collapsed paragraphs)
+                    // we pass `None` rather than mis-aligned text.
+                    let orig = chunks_en.get(i).map(|c| c.content.as_str());
                     let prov = store_chunks::ChunkProvenance {
                         source_kind: hit.source_kind.as_str(),
                         source_url: Some(hit.url.as_str()),
@@ -264,10 +303,8 @@ pub async fn run_research(
                         official: hit.trust_tier.is_official(),
                         confidence: 0.7,
                         fetched_at: Some(now),
-                        // Wave 2: store English text in both fields so retrieval
-                        // works now; Wave 3 will overwrite `content` with zh.
-                        content_lang: "en",
-                        content_orig: Some(chunk.content.as_str()),
+                        content_lang: "zh",
+                        content_orig: orig,
                     };
                     let db = db.clone();
                     let gid = ctx.game_id.to_string();
@@ -430,6 +467,20 @@ mod tests {
         Arc::new(synthetic_embed)
     }
 
+    /// Test translation hook: prepend "ZH:" so we can assert the orchestrator
+    /// actually used translated text downstream.
+    fn fake_translate_fn() -> TranslateFn {
+        Arc::new(|text: String| {
+            Box::pin(async move { Ok(format!("ZH:{}", text)) })
+        })
+    }
+
+    /// Identity translation hook (no-op) for tests that only care about
+    /// chunk counts / event recording, not translation behaviour.
+    fn passthrough_translate_fn() -> TranslateFn {
+        Arc::new(|text: String| Box::pin(async move { Ok(text) }))
+    }
+
     /// A test connector that returns a pre-baked list and records every call.
     struct StubConnector {
         id: &'static str,
@@ -527,6 +578,7 @@ mod tests {
             connectors: vec![stub],
             url_fetch,
             embed_fn: embed_fn(),
+            translate_fn: fake_translate_fn(),
         };
         let ctx = GameCtx {
             game_id: &g,
@@ -602,6 +654,7 @@ mod tests {
             connectors: vec![stub_a, stub_b],
             url_fetch,
             embed_fn: embed_fn(),
+            translate_fn: passthrough_translate_fn(),
         };
         let ctx = GameCtx {
             game_id: &g,
@@ -653,6 +706,7 @@ mod tests {
             connectors: vec![Arc::clone(&stub)],
             url_fetch,
             embed_fn: embed_fn(),
+            translate_fn: passthrough_translate_fn(),
         };
         let ctx = GameCtx {
             game_id: &g,
@@ -686,6 +740,69 @@ mod tests {
             )
             .unwrap();
         assert_eq!(trigger, "budget_exceeded");
+    }
+
+    #[tokio::test]
+    async fn orchestrator_writes_translated_text_to_content() {
+        let db = Db::open_in_memory().unwrap();
+        let g = make_game_with_page(&db);
+        let hit = ResearchHit {
+            url: "https://example.com/translate-me".into(),
+            title: "T".into(),
+            snippet: "s".into(),
+            source_kind: "web".into(),
+            trust_tier: TrustTier::Unverified,
+            full_text: None,
+        };
+        let stub = Arc::new(StubConnector {
+            id: "t",
+            tier: TrustTier::Community,
+            hits: vec![hit.clone()],
+            calls: Mutex::new(0),
+        }) as Arc<dyn ResearchConnector>;
+        let url_fetch = pre_seeded_url_fetch(
+            &db,
+            &[(&hit.url, "# Heading\n\nThis is some English content for translation.")],
+        );
+        let deps = OrchestratorDeps {
+            connectors: vec![stub],
+            url_fetch,
+            embed_fn: embed_fn(),
+            translate_fn: fake_translate_fn(),
+        };
+        let ctx = GameCtx {
+            game_id: &g,
+            bgg_id: None,
+            name_zh: "g",
+            name_en: None,
+            publisher_url: None,
+        };
+        let outcome = run_research(
+            &db,
+            &ctx,
+            ResearchPlan::explicit("q"),
+            Instant::now() + Duration::from_secs(5),
+            &deps,
+        )
+        .await
+        .unwrap();
+        assert!(outcome.chunks_added >= 1);
+
+        // Inspect the inserted chunks: content must start with our fake
+        // translation marker `ZH:`, content_lang must be `zh`, content_orig
+        // must hold the English text.
+        let conn = db.lock();
+        let (content, content_lang, content_orig): (String, String, Option<String>) = conn
+            .query_row(
+                "SELECT content, content_lang, content_orig FROM chunks \
+                 WHERE game_id = ? AND source_url = ? LIMIT 1",
+                rusqlite::params![&g, &hit.url],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert!(content.contains("ZH:"), "expected translated content; got: {}", content);
+        assert_eq!(content_lang, "zh");
+        assert!(content_orig.unwrap_or_default().contains("English content"));
     }
 
     #[test]

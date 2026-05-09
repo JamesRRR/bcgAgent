@@ -56,6 +56,98 @@ pub(crate) fn build_request_body(messages: &[Message]) -> serde_json::Value {
     })
 }
 
+/// Options for a one-shot (non-streaming) chat call. Forces every caller to
+/// be explicit about cost ceilings — translation/extractor workloads must not
+/// run away.
+#[derive(Debug, Clone)]
+pub struct ChatOptions {
+    pub temperature: f32,
+    pub max_tokens: u32,
+}
+
+impl Default for ChatOptions {
+    fn default() -> Self {
+        Self {
+            temperature: 0.2,
+            max_tokens: 1024,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct CompletionResponse {
+    #[serde(default)]
+    choices: Vec<CompletionChoice>,
+    #[serde(default)]
+    base_resp: Option<BaseResp>,
+}
+
+#[derive(serde::Deserialize)]
+struct CompletionChoice {
+    #[serde(default)]
+    message: Option<CompletionMessage>,
+}
+
+#[derive(serde::Deserialize)]
+struct CompletionMessage {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+/// Non-streaming chat completion. Wave 3 translation + structured extractors
+/// use this — they need the full assistant message in one shot, not a
+/// progressive token stream. Returns the assistant content string.
+pub async fn chat_completion(
+    messages: Vec<Message>,
+    options: ChatOptions,
+) -> AppResult<String> {
+    let key = minimax_key()?;
+    let body = serde_json::json!({
+        "model": MODEL,
+        "stream": false,
+        "messages": messages,
+        "temperature": options.temperature,
+        "max_tokens": options.max_tokens,
+    });
+
+    let resp = HTTP
+        .post(ENDPOINT)
+        .bearer_auth(&key)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json")
+        .json(&body)
+        .send()
+        .await?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(AppError::Llm(format!("status {}: {}", status, text)));
+    }
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Llm(format!("body: {e}")))?;
+    let parsed: CompletionResponse = serde_json::from_str(&text)
+        .map_err(|e| AppError::Llm(format!("parse {e}: {}", text.chars().take(300).collect::<String>())))?;
+    if let Some(b) = &parsed.base_resp {
+        if b.status_code != 0 {
+            return Err(AppError::Llm(format!(
+                "minimax {}: {}",
+                b.status_code, b.status_msg
+            )));
+        }
+    }
+    let content = parsed
+        .choices
+        .into_iter()
+        .next()
+        .and_then(|c| c.message)
+        .and_then(|m| m.content)
+        .unwrap_or_default();
+    Ok(content)
+}
+
 /// Stream chat completion. Calls `on_token` for each delta token chunk.
 /// Returns the full concatenated assistant message on success.
 pub async fn stream_chat<F>(messages: Vec<Message>, mut on_token: F) -> AppResult<String>

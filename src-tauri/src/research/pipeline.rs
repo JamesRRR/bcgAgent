@@ -11,11 +11,16 @@
 //! Throttle: 1 request/sec (BGG ToS).
 //! Quotas: at most 5 forum threads, at most 50 gallery captions.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::cover::bgg;
 use crate::error::AppResult;
+use crate::extractors;
 use crate::research::bgg_extra;
+use crate::research::connectors::GameCtx;
+use crate::research::orchestrator::{
+    self, OrchestratorDeps, ResearchPlan, DEFAULT_MAX_HITS_TO_FETCH,
+};
 use crate::store::{
     chunks as store_chunks, external_refs, games as store_games, illustrations as store_ill,
     pages as store_pages, Db,
@@ -474,7 +479,118 @@ pub async fn run_for_game(db: &Db, game_id: &str) -> AppResult<ResearchSummary> 
         Err(e) => tracing::warn!("research: pull_gallery failed: {e}"),
     }
 
+    // Wave 3 — final additive step: lazy seed crawl + structured extractors.
+    // Failures here NEVER fail the import. The user has already seen
+    // `ingest:done`; this work is bonus context.
+    if let Err(e) = run_seed_crawl(db, game_id).await {
+        tracing::warn!("research: seed crawl failed: {e}");
+    }
+
     Ok(s)
+}
+
+/// Wave 3 seed crawl + extractor sweep. Runs two short research events
+/// (`{name} setup` + `{name} rules clarifications`), then fans out the three
+/// structured extractors in parallel. All errors are logged and swallowed.
+pub async fn run_seed_crawl(db: &Db, game_id: &str) -> AppResult<()> {
+    // Resolve game context once.
+    let game = {
+        let db = db.clone();
+        let gid = game_id.to_string();
+        tokio::task::spawn_blocking(move || store_games::get_game(&db, &gid))
+            .await
+            .map_err(|e| crate::error::AppError::Other(anyhow::anyhow!("join: {e}")))??
+    };
+    let game = match game {
+        Some(g) => g,
+        None => {
+            tracing::warn!("seed_crawl: game {game_id} not found");
+            return Ok(());
+        }
+    };
+    let bgg_id = {
+        let db = db.clone();
+        let gid = game_id.to_string();
+        tokio::task::spawn_blocking(move || store_games::get_bgg_id(&db, &gid))
+            .await
+            .map_err(|e| crate::error::AppError::Other(anyhow::anyhow!("join: {e}")))??
+    };
+
+    // Pick the most identifiable name (English preferred; falls back to
+    // Chinese) for the search query.
+    let name_for_query: String = game
+        .name_en
+        .clone()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| game.name_zh.clone());
+
+    let queries = [
+        format!("{} setup", name_for_query),
+        format!("{} rules clarifications", name_for_query),
+    ];
+
+    // Build orchestrator deps once. If production wiring fails (missing key,
+    // etc.) skip the crawl but still try the extractors.
+    let crawl_chunks_added: u32 = match OrchestratorDeps::production(db.clone()) {
+        Ok(deps) => {
+            let ctx = GameCtx {
+                game_id: &game.id,
+                bgg_id,
+                name_zh: &game.name_zh,
+                name_en: game.name_en.as_deref(),
+                publisher_url: None,
+            };
+            let mut total = 0u32;
+            for q in &queries {
+                let plan = ResearchPlan {
+                    trigger: "seed_import",
+                    query: q.clone(),
+                    max_hits_to_fetch: DEFAULT_MAX_HITS_TO_FETCH,
+                };
+                let deadline = Instant::now() + Duration::from_secs(10);
+                match orchestrator::run_research(db, &ctx, plan, deadline, &deps).await {
+                    Ok(o) => total += o.chunks_added,
+                    Err(e) => tracing::warn!("seed_crawl: research '{q}' failed: {e}"),
+                }
+            }
+            total
+        }
+        Err(e) => {
+            tracing::warn!("seed_crawl: orchestrator deps unavailable: {e}");
+            0
+        }
+    };
+
+    // Run all three extractors in parallel. tokio::join! returns a tuple of
+    // results; we log + swallow any failures.
+    let (c, f, s) = tokio::join!(
+        extractors::extract_components(db, game_id),
+        extractors::extract_faqs(db, game_id),
+        extractors::extract_setup(db, game_id),
+    );
+    let comp = c.unwrap_or_else(|e| {
+        tracing::warn!("seed_crawl: components extractor failed: {e}");
+        Default::default()
+    });
+    let faqs = f.unwrap_or_else(|e| {
+        tracing::warn!("seed_crawl: faq extractor failed: {e}");
+        Default::default()
+    });
+    let setup = s.unwrap_or_else(|e| {
+        tracing::warn!("seed_crawl: setup extractor failed: {e}");
+        Default::default()
+    });
+
+    let total_chunks =
+        crawl_chunks_added + comp.chunks_added + faqs.chunks_added + setup.chunks_added;
+    tracing::info!(
+        "seed_crawl summary: components={}, faqs={}, setup_steps={}, chunks_added={}",
+        comp.created,
+        faqs.created,
+        setup.created,
+        total_chunks
+    );
+    Ok(())
 }
 
 /// Greedy paragraph-bounded splitter. Same shape as

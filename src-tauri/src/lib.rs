@@ -10,6 +10,7 @@ pub mod secrets;
 pub mod audio;
 pub mod cover;
 pub mod embed;
+pub mod extractors;
 pub mod llm;
 pub mod ocr;
 pub mod research;
@@ -138,6 +139,7 @@ pub fn run() {
             commands::import_external::import_from_bgg,
             commands::research::research_run,
             commands::research::cmd_explicit_research,
+            commands::research::cmd_run_extractors,
             commands::ask::ask,
             commands::walkthrough::walkthrough_run,
             commands::walkthrough::walkthrough_get_cached,

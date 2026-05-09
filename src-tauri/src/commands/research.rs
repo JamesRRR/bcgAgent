@@ -6,9 +6,11 @@
 
 use std::time::{Duration, Instant};
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
+use crate::extractors;
 use crate::research::connectors::GameCtx;
 use crate::research::orchestrator::{
     self, OrchestratorDeps, ResearchOutcome, ResearchPlan, DEFAULT_MAX_HITS_TO_FETCH,
@@ -81,4 +83,32 @@ pub async fn cmd_explicit_research(
     let deadline = Instant::now() + Duration::from_secs(15);
     let deps = OrchestratorDeps::production(db.clone())?;
     orchestrator::run_research(&db, &ctx, plan, deadline, &deps).await
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtractorRunSummary {
+    pub components: extractors::ExtractSummary,
+    pub faqs: extractors::ExtractSummary,
+    pub setup: extractors::ExtractSummary,
+}
+
+/// Wave 3 explicit re-extraction. Re-runs all three structured extractors
+/// for `game_id` and returns the per-extractor summary. Idempotent — each
+/// extractor wipes its rows before reinserting.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn cmd_run_extractors(
+    state: State<'_, AppState>,
+    game_id: String,
+) -> AppResult<ExtractorRunSummary> {
+    let db = state.db.clone();
+    let (c, f, s) = tokio::join!(
+        extractors::extract_components(&db, &game_id),
+        extractors::extract_faqs(&db, &game_id),
+        extractors::extract_setup(&db, &game_id),
+    );
+    Ok(ExtractorRunSummary {
+        components: c?,
+        faqs: f?,
+        setup: s?,
+    })
 }
