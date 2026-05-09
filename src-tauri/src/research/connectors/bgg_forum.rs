@@ -49,28 +49,38 @@ impl ResearchConnector for BggForumConnector {
         };
 
         // Pull all forums attached to this thing, then walk threads in each
-        // looking for subjects matching the query. Throttling is the caller's
-        // job (orchestrator deadline + bgg_extra's 1 req/s convention).
+        // looking for subjects matching any meaningful token from the query.
+        // Throttling is the caller's job (orchestrator deadline + bgg_extra's
+        // 1 req/s convention).
         let forums = bgg_extra::list_forums(bgg_id).await?;
-        let q_lower = query.trim().to_lowercase();
-        if q_lower.is_empty() {
+        let tokens = query_tokens(query);
+        if tokens.is_empty() {
             return Ok(Vec::new());
         }
 
-        let mut hits: Vec<(u32, String, u32)> = Vec::new(); // (thread_id, subject, articles)
+        // (thread_id, subject, articles, match_count)
+        let mut hits: Vec<(u32, String, u32, usize)> = Vec::new();
         for forum in forums.iter().filter(|f| f.num_threads > 0) {
             let threads = bgg_extra::list_threads(forum.id).await?;
             for t in threads {
                 if t.num_articles < MIN_ARTICLES {
                     continue;
                 }
-                if t.subject.to_lowercase().contains(&q_lower) {
-                    hits.push((t.id, t.subject, t.num_articles));
+                let subj_lower = t.subject.to_lowercase();
+                let match_count = tokens
+                    .iter()
+                    .filter(|tok| subj_lower.contains(tok.as_str()))
+                    .count();
+                if match_count > 0 {
+                    hits.push((t.id, t.subject, t.num_articles, match_count));
                 }
             }
         }
-        hits.sort_by_key(|(_id, _subj, n)| std::cmp::Reverse(*n));
+        // Rank by token-match count, break ties by article volume.
+        hits.sort_by_key(|(_id, _subj, n, m)| (std::cmp::Reverse(*m), std::cmp::Reverse(*n)));
         hits.truncate(MAX_HITS);
+        let hits: Vec<(u32, String, u32)> =
+            hits.into_iter().map(|(id, s, n, _)| (id, s, n)).collect();
 
         let mut out: Vec<ResearchHit> = Vec::with_capacity(hits.len());
         for (tid, subject, _) in hits {
@@ -97,6 +107,26 @@ impl ResearchConnector for BggForumConnector {
         }
         Ok(out)
     }
+}
+
+/// Lowercased query tokens worth matching against thread subjects: alpha-
+/// numeric runs of length ≥ 3, minus a small English stopword list. Phrase
+/// matching against full queries is too brittle (no thread title contains
+/// "catan robber rules"); per-token OR-matching with score-by-overlap is
+/// the right primitive.
+fn query_tokens(query: &str) -> Vec<String> {
+    const STOPWORDS: &[&str] = &[
+        "the", "and", "for", "with", "how", "what", "does", "did", "are", "was",
+        "this", "that", "from", "into", "rule", "rules", "rulebook", "question",
+        "questions", "help", "about", "your", "you", "can", "but", "not",
+    ];
+    query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_lowercase())
+        .filter(|s| s.chars().count() >= 3)
+        .filter(|s| !STOPWORDS.contains(&s.as_str()))
+        .collect()
 }
 
 /// Build the up-to-`max_chars` leading snippet of `body`. Operates on chars
@@ -130,6 +160,25 @@ mod tests {
     fn snippet_no_ellipsis_when_short() {
         let out = short_snippet("hi", 10);
         assert_eq!(out, "hi");
+    }
+
+    #[test]
+    fn query_tokens_drops_stopwords_and_short_tokens() {
+        let toks = query_tokens("Catan robber rules — the question is how?");
+        assert!(toks.contains(&"catan".to_string()));
+        assert!(toks.contains(&"robber".to_string()));
+        assert!(!toks.contains(&"rules".to_string()), "stopword");
+        assert!(!toks.contains(&"the".to_string()), "stopword");
+        assert!(!toks.contains(&"is".to_string()), "too short");
+    }
+
+    #[test]
+    fn query_tokens_handles_punctuation_and_dashes() {
+        let toks = query_tokens("year-of-the-rat — components/cards");
+        assert!(toks.contains(&"year".to_string()));
+        assert!(toks.contains(&"rat".to_string()));
+        assert!(toks.contains(&"components".to_string()));
+        assert!(toks.contains(&"cards".to_string()));
     }
 
     /// Synthetic top-level integration of subject filtering / ranking. The
